@@ -125,6 +125,40 @@ Strictly a valid JSON array of strings. Example: ["phrase one","phrase two","phr
 No code blocks, no explanations, no additional formatting.
 """.strip()
 
+def resolve_model_path_from_env(project_root: Path) -> Optional[Path]:
+    """
+    Resolve model path from env vars:
+    - MODEL_PATH: direct path to .gguf
+    - MODEL_DIR: directory to search for .gguf candidates
+    """
+    p_env = os.getenv("MODEL_PATH")
+    if p_env:
+        p = Path(p_env)
+        if not p.is_absolute():
+            p = project_root / p
+        try:
+            if p.exists() and p.is_file() and p.stat().st_size > 0:
+                return p.resolve()
+        except Exception:
+            pass
+
+    d_env = os.getenv("MODEL_DIR")
+    if d_env:
+        d = Path(d_env)
+        if not d.is_absolute():
+            d = project_root / d
+        try:
+            candidates = []
+            for f in d.rglob("*.gguf"):
+                if f.stat().st_size > 0:
+                    candidates.append(f)
+            if candidates:
+                candidates.sort(key=lambda x: (_model_score(x.name), -x.stat().st_size))
+                return candidates[0].resolve()
+        except Exception:
+            pass
+    return None
+
 def discover_popular_json(outputs_dir: Path) -> Path:
     try:
         candidates: List[Path] = []
@@ -746,7 +780,8 @@ def main() -> None:
     log(f"Using demand run_summary JSON: {demand_path}")
 
     # Resolve model path (CLI override or auto-discover)
-    model_path = resolve_path(project_root, args.model)
+    env_model_path = resolve_model_path_from_env(project_root)
+    model_path = env_model_path or resolve_path(project_root, getattr(args, "model", None))
     if model_path is None:
         model_path = discover_model_path(project_root)
         if model_path is None:
@@ -756,7 +791,7 @@ def main() -> None:
             )
         log(f"Auto-discovered GGUF model: {model_path}")
     else:
-        log(f"Using GGUF model (from CLI): {model_path}")
+        log(f"Using GGUF model: {model_path}")
 
     # Apply keyword cap from CLI
     global MAX_KEYWORDS
@@ -831,9 +866,11 @@ def ensure_llm_loaded(project_root: Optional[Path] = None):
         pr = project_root or discover_project_root()
     except Exception:
         pr = Path.cwd()
-    model_p = discover_model_path(pr)
+
+    env_model = resolve_model_path_from_env(pr)
+    model_p = env_model or discover_model_path(pr)
     if not model_p:
-        raise RuntimeError("No .gguf model found under project root for AI keywords.")
+        raise RuntimeError("No .gguf model found under project root or MODEL_DIR for AI keywords.")
     _LLM_SINGLETON = load_model(str(model_p))
     return _LLM_SINGLETON
 

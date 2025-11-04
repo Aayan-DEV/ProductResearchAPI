@@ -2,3 +2,4 @@ dotenv
 requests
 fastapi
 uvicorn
+llama-cpp-python
