@@ -1,0 +1,16 @@
+curl 'https://api.everbee.com/keyword_research/keyword_suggestion?type_of_search=keywords_suggestion&keyword=pdf&order_by=new_volume&order_direction=desc&page=1&count_search=true&fromApp=webapp' \
+  -X 'POST' \
+  -H 'accept: application/json' \
+  -H 'accept-language: en-US,en;q=0.9' \
+  -H 'content-length: 0' \
+  -H 'origin: https://app.everbee.io' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://app.everbee.io/' \
+  -H 'sec-ch-ua: "Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: cross-site' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
+  -H 'x-access-token: eyJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJldmVyYmVlLXNzbyIsImlhdCI6MTc2MDgwNTIyNywiZXhwIjoxNzYxNDEwMDI3LCJqdGkiOiIyOGY3NTlmZjVkYjYiLCJ1c2VyX2lkIjoiZGEzMTkwNmYtYjFiYS00OTBlLThjZmMtNzU1NTE5YjliYjRjIiwiZW1haWwiOiJhYXlhbmFzaWYxMjM0QGdtYWlsLmNvbSIsInR2IjoyLCJpYnAiOmZhbHNlLCJpYnMiOnRydWUsImltYWdlIjoiaHR0cHM6Ly9pLmV0c3lzdGF0aWMuY29tL2l1c2EvYmE5Y2RlLzEwMzY3NTQyMC9pdXNhXzc1eDc1LjEwMzY3NTQyMF84MWd3LmpwZz92ZXJzaW9uPTAiLCJzb3MiOnRydWUsImFjdCI6IjEiLCJhdWQiOiIzNy1VUDR4UjRtWlphWnRlczI3aTZpSllCelIwWHkwX0MxMGZlLXd0LVNFIiwic2NvcGVzIjpbXX0.XYYESj_9Yn2FKK5Ey47r9RUQFeBzujBr2HkHyRXnHTbftiQ8ArnhDeHX7Z03A--x20rmFgCPdDphC0EGvPfh6A'

@@ -1,0 +1,34 @@
+curl \
+  --request POST \
+  --url 'https://www.etsy.com/api/v3/ajax/bespoke/member/neu/specs/listingCards' \
+  --header 'Cookie: datadome=IE5UUQAM20Go76_lnX74~5RStXtFp7odf6wKM82NLxiOwEQst1Ut6rkUwiAPzAAY2lI2cxGxbhRv6sLOj1yaFPxXdmrZuYA_75_PikUeXuR7sxyJEYHZg66MqZzNngLy; exp_ebid=m%3DAtdmNt7OMcJ0ipQjHvfbZH3H1Ay0y5pQzl5A3fWIezk%253D%2Cv%3D1RoieGgxkwblpbN94g96UW0CbiLQ7hYp; uaid=RiZwolHSLH60rkIZJfLJK8Am2kBjZACCjO8LA2B0tVJpYmaKkpVSaZSluVlhUmFhXnZmSpVFmZFLgKtLeEFYdk5WkFItAwA.; user_prefs=DAduA0mb2SiaecBGlNB5x3JTpo1jZACCjO8LA2B0tJJraJCSTl5pTo6OUmqebmiwko6SmydUxAhC4SJiGQA.; fve=1761059152.0; exp_ebid=m=AtdmNt7OMcJ0ipQjHvfbZH3H1Ay0y5pQzl5A3fWIezk%3D,v=1RoieGgxkwblpbN94g96UW0CbiLQ7hYp; enable_http3_www=off; ua=531227642bc86f3b5fd7103a0c0b4fd6; p=eyJnZHByX3RwIjoxLCJnZHByX3AiOjEsIkFkdmVydGlzaW5nIjoxLCJGdW5jdGlvbmFsIjoxfQ..; search_options={"prev_search_term":"pdf","item_language":null,"language_carousel":null}; _fbp=fb.1.1761059155779.5480433810037303; tsd=%7B%7D; _gcl_au=1.1.1435713659.1761059158; _ga=GA1.1.1260099370.1761059158; lantern=e315d3e0-0902-43a2-b1a7-fe5a3ee2a5ed; _pin_unauth=dWlkPU16bG1ZbUV4TVRrdE9UYzROQzAwWXpVMExXRmtaR0V0WXpVMlpEWmtNVGN4TXpVNQ; last_browse_page=https%3A%2F%2Fwww.etsy.com%2Ffi-en%2Fshop%2FNorAndOak; num_listings_clicked_from_search=KULGHEGMNULZnja5gRQGVOs-3pZjZACCjO8Lg6F0RLVSQUqakpVhLQMA; _ga_KR3J610VYM=GS2.1.s1761059158$o1$g1$t1761059162$j56$l0$h0; _uetsid=7318fac0ae8f11f0acaad14624f8389c; _uetvid=7318e8f0ae8f11f0b19b9f15469791f5; datadome=77cu6TxC9ulnRDBw6mXHlk2rYy2BikpnTRsJfjOZ053HxwiBswGI6AOidTJb09AGPXu_CDRTjENbtr2xtNeI1JlicbIUTWN9W1wl7bQx8kfulACcxNut~9vWopirsTW5' \
+  --header 'accept: */*' \
+  --header 'accept-language: en-US,en;q=0.9' \
+  --header 'content-type: application/json' \
+  --header 'downlink: 10' \
+  --header 'dpr: 2' \
+  --header 'ect: 4g' \
+  --header 'origin: https://www.etsy.com' \
+  --header 'priority: u=1, i' \
+  --header 'referer: https://www.etsy.com/fi-en/search?q=pdf&ref=search_bar' \
+  --header 'rtt: 150' \
+  --header 'sec-ch-dpr: 2' \
+  --header 'sec-ch-ua: "Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"' \
+  --header 'sec-ch-ua-arch: "arm"' \
+  --header 'sec-ch-ua-bitness: "64"' \
+  --header 'sec-ch-ua-full-version-list: "Google Chrome";v="141.0.7390.107", "Not?A_Brand";v="8.0.0.0", "Chromium";v="141.0.7390.107"' \
+  --header 'sec-ch-ua-mobile: ?0' \
+  --header 'sec-ch-ua-platform: "macOS"' \
+  --header 'sec-ch-ua-platform-version: "26.0.1"' \
+  --header 'sec-fetch-dest: empty' \
+  --header 'sec-fetch-mode: cors' \
+  --header 'sec-fetch-site: same-origin' \
+  --header 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
+  --header 'x-csrf-token: 3:1761059167:y10h34Nqg4Y7QxqphVlVzZj3yoQU:69b426241c4e04e212eed980a7ec69a23fce28d8f6bfd6421794a1f35ea0d136' \
+  --header 'x-detected-locale: EUR|en-US|FI' \
+  --header 'x-page-guid: 1004490f816a.bf498372a0865af116f2.00' \
+  --header 'x-recs-primary-location: https://www.etsy.com/fi-en/search?q=pdf&ref=search_bar' \
+  --header 'x-recs-primary-referrer: https://www.etsy.com/' \
+  --header 'x-recs-should-show-more: false' \
+  --header 'x-requested-with: XMLHttpRequest' \
+  --data-raw '{"log_performance_metrics":true,"specs":{"listingCards":["Search2_ApiSpecs_LazyListingCards",{"listing_ids":[1412287157,1787219080],"search_request_params":{"detected_locale":{"language":"en-US","currency_code":"EUR","region":"FI"},"locale":{"language":"en-US","currency_code":"EUR","region":"FI"},"name_map":{"query":"q","query_type":"qt","results_per_page":"result_count","min_price":"min","max_price":"max"},"parameters":{"q":"pdf","ref":"search_bar","utm_medium":null,"placement":"wsg","page_type":"search","result_count":48,"request_type":"initial","referrer":null,"bucket_id":"uZ976qbqqnkidz8v2DPEDWpVkljR","user_id":null,"filter_distracting_content":true,"spell_correction_via_mmx":true,"should_pass_user_location_to_thrift":true},"user_id":null},"is_mobile":false,"organic_listings_count":2612815,"user_favorite_shop_ids":[],"customizable_ads_listing_ids":[],"customizable_organic_listing_ids":[],"customizable_ads_logging_keys":[],"ads_organic_positions":[{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]},{"type":"organic","special_treatments":[]},{"type":"ad","special_treatments":[]}]}]},"view_data_event_name":"search_lazy_loaded_cards_specview_rendered","runtime_analysis":false,"listing_ids":[4303894019,4295703430,829596480,1051764784,4367936093,1570958977,1816878831,4374510092,4341618097,1270696812,1896089407,1443954792,1833012305,4370570670,1812367835,4390815143,1010864883,4367796721,1087359622,1043191624]}'

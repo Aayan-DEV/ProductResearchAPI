@@ -1,0 +1,18 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# App data
+outputs/
+users/
+
+# Secrets
+.env
+
+# Large model artifacts
+gemma-3n-E4B-it-GGUF/
+*.gguf
+
+# OS/IDE cruft
+.DS_Store

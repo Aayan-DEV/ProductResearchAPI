@@ -1,0 +1,27 @@
+curl --request GET \
+  --url 'https://www.etsy.com/api/v3/ajax/public/cart/sidebar-cart?use_vat_inclusive_pricing=false&show_sidebar_cart_edd_shipping=false&page_type=view_listing&use_vat_inclusive_pricing_lp_sidebar_cart_operational=false' \
+  --header 'Cookie: userSessionId=1761838167145abxdou1sv; uaid=m5Jb8xT2-IatC50QW0ohXIckx5hjZACCTOaWCBhdrVSamJmiZKWUVplTYuIcnF_k5FqRUW6YZ5Yfkpnu5uRYmlLqplTLAAA.; user_prefs=JebGnOkHe1sp1rFu9NgsHHWvUzxjZACCTOaWCBgdrRQa7KKkk1eak6OjlJqnGxqspKMEIsAiRhAKFxHLAAA.; fve=1761838168.0; _fbp=fb.1.1761838168551.7163188085448820; exp_ebid=m=C1%2Fj4YA5jxxoyxN3afMnaZIG1nGKloeHAgCwyIN17E4%3D,v=rSsQG8yaixX1LRs314r4rIrW9wjPBPYO; ua=531227642bc86f3b5fd7103a0c0b4fd6; _ga=GA1.1.190493142.1761838173; _pin_unauth=dWlkPU1qY3lNRGxrWkdNdFlUTXlOaTAwTXpFeExXSXlOVGd0WldFMk5ETTBOMkl5WVdVNQ; _tt_enable_cookie=1; _ttp=01K8TVT67GTR3K3J21H9F3ZSRV_.tt.1; ttcsid_CD255AJC77U2F908QPL0=1761837999612::Pnz8X30uye0Y1mlthi9T.1.1761838176501.0; ttcsid=1761837999613::Upc5KqDlXui_47J71ubr.1.1761838176507.0; lantern=13dcd5b1-604a-4092-a19f-4f674a107561; p=eyJnZHByX3RwIjoxLCJnZHByX3AiOjEsIkFkdmVydGlzaW5nIjoxLCJGdW5jdGlvbmFsIjoxfQ..; gift_session_v2=FZ5wdsr1YOwQ8O5hTl-dpY0QttRjZACCTObmBxC6pdSQAQA.; search_options={"prev_search_term":"personalised","item_language":null,"language_carousel":null}; search_history_v2=q1yHHRuEfaavUfvJL4GkVAagZkhjZACCTObmLRC6lb1aqTg1sSg5I7VYySq6WqmwNLWoUslKqSC1qDg_LzEnszg1RUlHqSQzNzW-uCQxt0DJytDczNDC2MLYxFRHKSOxOL4otbg0pwSovaSoNLVWB7sZCskZRZnFJbmJxdhNM7S0JGRaShp2rQYGZti0xtYyAAA.; tsd=%7B%7D; last_browse_page=https%3A%2F%2Fwww.etsy.com%2Fshop%2FCrossmetalworks; wedding_session=dZczdnsT-fRzvG1CW3cnLotMutVjZACCTOZWbjgNAA..; num_listings_clicked_from_search=9mkYCTX1qV0Lf21fkBEnyTgGcuZjZACCTOaWCAjd6l6tVJBaVJyfl5iTWZyaomRlVMsAAA..; QSI_HistorySession=https%3A%2F%2Fwww.etsy.com%2Flisting%2F865760988%2Fcustom-family-name-metal-monogram-sign%3Fls%3Da%26ga_order%3Dmost_relevant%26ga_search_type%3Dall%26ga_view_type%3Dgallery%26ga_search_query%3Dpersonalised%26ref%3Dsc_gallery-1-2%26sr_prefetch%3D1%26pf_from%3Dsearch%26pro%3D1%26frs%3D1%26pop%3D1%26sts%3D1%26plkey%3DLTb4f0ab934d9110f4dab37f3ce5a77f51121ea1fd%253A865760988%26variation0%3D4922172780%26variation1%3D5468900414~1761838411604; _gcl_au=1.1.993925187.1761838172.497479685.1761838317.1761838492; gtm_deferred=%7B%22add_to_cart%22%3A%7B%22id%22%3A865760988%2C%22product_id%22%3A%229768595.865760988%22%7D%7D; g_state={"i_l":0,"i_ll":1761838536617,"i_b":"apFlXS81caOjRSVnjNj8J3Q06CMVLRNyQRftsyaiLcs"}; _ga_CL7QN58ZCC=GS2.1.s1761838350$o1$g1$t1761838537$j58$l0$h0; _uetsid=3d0f0210b5a511f0ad57d11c78baf1b0|1eg86lp|2|g0l|0|2129; _uetvid=d3cbe880b5a411f0a845bd43af9816a7|11bbsba|1761838177460|12|1|bat.bing.com/p/insights/c/a; datadome=23ewZ8Q0Y5P6u68OTgG68jAeoBX8TxNWjwYpsIlKlrHV~2yTt6jKxuVpriivkrl2HJZGn3wCN_xQzEqGwrx0qWyqXqFKyeAz95AdOKO6gUes942jw2In_~EaMJ1rGT_7; AMP_4f4687ed7a=JTdCJTIyZGV2aWNlSWQlMjIlM0ElMjI4YTExY2ZkMy05ZjI1LTRlNjEtYjIxMi0xNGI1YTdhNjNlNGUlMjIlMkMlMjJ1c2VySWQlMjIlM0ElMjJkYTMxOTA2Zi1iMWJhLTQ5MGUtOGNmYy03NTU1MTliOWJiNGMlMjIlMkMlMjJzZXNzaW9uSWQlMjIlM0ExNzYxODM3NzcyNzQ1JTJDJTIyb3B0T3V0JTIyJTNBZmFsc2UlMkMlMjJsYXN0RXZlbnRUaW1lJTIyJTNBMTc2MTgzODUzODA3MSUyQyUyMmxhc3RFdmVudElkJTIyJTNBMTM4NSUyQyUyMnBhZ2VDb3VudGVyJTIyJTNBMCU3RA==; _ga_KR3J610VYM=GS2.1.s1761838173$o1$g1$t1761838539$j56$l0$h0' \
+  --header 'accept: */*' \
+  --header 'accept-language: en-US,en;q=0.9' \
+  --header 'content-type: application/json' \
+  --header 'downlink: 10' \
+  --header 'dpr: 2' \
+  --header 'ect: 4g' \
+  --header 'priority: u=1, i' \
+  --header 'referer: https://www.etsy.com/listing/865760988/custom-family-name-metal-monogram-sign?ls=a&ga_order=most_relevant&ga_search_type=all&ga_view_type=gallery&ga_search_query=personalised&ref=sc_gallery-1-2&sr_prefetch=1&pf_from=search&pro=1&frs=1&pop=1&sts=1&plkey=LTb4f0ab934d9110f4dab37f3ce5a77f51121ea1fd%3A865760988&variation0=4922172780&variation1=5468900414' \
+  --header 'rtt: 100' \
+  --header 'sec-ch-dpr: 2' \
+  --header 'sec-ch-ua: "Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"' \
+  --header 'sec-ch-ua-arch: "arm"' \
+  --header 'sec-ch-ua-bitness: "64"' \
+  --header 'sec-ch-ua-full-version-list: "Google Chrome";v="141.0.7390.123", "Not?A_Brand";v="8.0.0.0", "Chromium";v="141.0.7390.123"' \
+  --header 'sec-ch-ua-mobile: ?0' \
+  --header 'sec-ch-ua-platform: "macOS"' \
+  --header 'sec-ch-ua-platform-version: "26.0.1"' \
+  --header 'sec-fetch-dest: empty' \
+  --header 'sec-fetch-mode: cors' \
+  --header 'sec-fetch-site: same-origin' \
+  --header 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
+  --header 'x-detected-locale: USD|en-US|US' \
+  --header 'x-page-guid: 10061999c096.077927863c9a7d85ad7a.00' \
+  --cookie 'fve=1761421334.0; exp_ebid=m%3DWGdZTJfCDJtPfpab5aN4lXzHI54CtBBzC%252FxFm6jlcuM%253D%2Cv%3D150KKjZ8m-1yZ93v58hBiRBC69vecIFN'

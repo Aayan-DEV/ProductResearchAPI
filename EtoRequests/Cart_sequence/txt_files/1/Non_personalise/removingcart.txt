@@ -1,0 +1,28 @@
+curl 'https://www.etsy.com/api/v3/ajax/bespoke/member/checkout/cart-list/12462948679/cart/12462948679/listing/4329390689/inventory/25908303266/customization/0/remove' \
+  -H 'accept: */*' \
+  -H 'accept-language: en-US,en;q=0.9' \
+  -H 'content-type: application/json' \
+  -b 'user_prefs=mDYCx783GI_tLvO9bA4PJFQ_sz1jZACCjCcWIjA6Wsk1NEhJJ680J0dHKTVPNzRYSUfJzRMqYgShcBGxDAA.; fve=1759787028.0; exp_ebid=m=wc3XfER%2Bgh1HRAjIVANDkft8EgKkusEFiZPdA4Tq0TM%3D,v=E0nSpNfRz_GXokay5U3y11XmneVK6nZz; ua=531227642bc86f3b5fd7103a0c0b4fd6; p=eyJnZHByX3RwIjoyLCJnZHByX3AiOjIsIkFkdmVydGlzaW5nIjoyLCJGdW5jdGlvbmFsIjoyfQ..; LD=1; dashboard_stats_range=all_time; session-key-apex=954735157-1419340583265-ee85733840befa2bb1ed923339b01cb15fcfd124ebc10c7dba5fb746|1768562967; _ga=GA1.2.1300434052.1761375564; _ga_KLN5K5P8SN=GS2.2.s1761375564$o1$g1$t1761375581$j43$l0$h0; uaid=_aXCcd-IIIZDFNsQNbMQs4RX40tjZACCjCcWIiA6kzmCuVqpNDEzRclKKcLXUdc9PcXdPCIoLSDLKNegNL4ipcDC3CyzLEKplgEA; gifting_mission_module_occasion={"occasionId":1259729986981,"seenTimestamps":[1761826820206]}; search_options={"prev_search_term":"pdf","item_language":null,"language_carousel":null}; tsd=%7B%7D; last_browse_page=https%3A%2F%2Fwww.etsy.com%2Ffi-en%2Fshop%2FBrighterPlans; gtm_deferred=%7B%22add_to_cart%22%3A%7B%22id%22%3A4329390689%2C%22product_id%22%3A%2242145260.4329390689%22%7D%7D; AMP_4f4687ed7a=JTdCJTIyZGV2aWNlSWQlMjIlM0ElMjI3ZjhkM2ZmMC0zMGNhLTRjNmYtODFiZS01ZTIxMjljNjM3YzclMjIlMkMlMjJzZXNzaW9uSWQlMjIlM0ExNzU5Nzg3MDMwNDAwJTJDJTIyb3B0T3V0JTIyJTNBZmFsc2UlMkMlMjJwYWdlQ291bnRlciUyMiUzQTAlN0Q=; datadome=Qv5zyBkg9b161K2_C7foSW34nZpi9zj8mBDqCVac_2ErMVrIVQXllybZTjZdF3WvJLAqMl0rtiJKorWeUef5H3L1je4Gefvji8enOebBhThp7yOaboEs88jDcBuhAKgc' \
+  -H 'downlink: 10' \
+  -H 'dpr: 2' \
+  -H 'ect: 4g' \
+  -H 'origin: https://www.etsy.com' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://www.etsy.com/fi-en/listing/4329390689/digital-planner-undated-ipad-android?ls=s&ga_order=most_relevant&ga_search_type=all&ga_view_type=gallery&ga_search_query=pdf&ref=sr_gallery-1-2&sr_prefetch=1&pf_from=search&pro=1&pop=1&dd=1&content_source=3b0799f1-34a2-4249-833b-a6cd9a815390%253ALTdd379301653061884494ea0003d42e8d83e0dd0a&organic_search_click=1&logging_key=3b0799f1-34a2-4249-833b-a6cd9a815390%3ALTdd379301653061884494ea0003d42e8d83e0dd0a' \
+  -H 'rtt: 100' \
+  -H 'sec-ch-dpr: 2' \
+  -H 'sec-ch-ua: "Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"' \
+  -H 'sec-ch-ua-arch: "arm"' \
+  -H 'sec-ch-ua-bitness: "64"' \
+  -H 'sec-ch-ua-full-version-list: "Google Chrome";v="141.0.7390.123", "Not?A_Brand";v="8.0.0.0", "Chromium";v="141.0.7390.123"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-ch-ua-platform-version: "26.0.1"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
+  -H 'x-csrf-token: 3:1761826862:nbBvPSwGexgwqTcHXPAdl8s8duCO:6b2ca0a10f4985cad1e8ab63ea88186416a63f856f77155ed91e70cefa653db4' \
+  -H 'x-detected-locale: EUR|en-US|FI' \
+  -H 'x-page-guid: 100612a47c48.1e68eee957dc4ee4872e.00' \
+  --data-raw '{"show_sidebar_cart":true}'

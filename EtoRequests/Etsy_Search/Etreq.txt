@@ -1,0 +1,28 @@
+curl --request GET \
+  --url 'https://www.etsy.com/api/v3/ajax/bespoke/shop/57124360/marketplace-insights/results-data?query=Gingerbread%20Dragon%20Crochet&search_term_hash=&search_trigger=results_search_bar' \
+  --header 'Cookie: user_prefs=NVH0RU7zAdxZm1ikP1y-dWRkvbVjZACCjLsNy2F0tJJraJCSTl5pTo6OUmqebmiwko6SmydUxAhC4SJiGQA.; fve=1759346855.0; exp_ebid=m=3%2BM9ykA%2F2pouWyfEhpADzyFl23owgiUF7yhb3E%2BzKxo%3D,v=_wYWQHYA7bC_OR8iP8PT2aANS9oDseP6; ua=531227642bc86f3b5fd7103a0c0b4fd6; p=eyJnZHByX3RwIjoxLCJnZHByX3AiOjEsIkFkdmVydGlzaW5nIjoxLCJGdW5jdGlvbmFsIjoxfQ..; LD=1; _fbp=fb.1.1759346867068.1415583080960474; _gcl_au=1.1.1413729983.1759346868; lantern=fc123864-4e1d-4ca3-bee2-cf69dd4d17c3; _pin_unauth=dWlkPVpXSXhORFUzTnpjdFpUVTVPQzAwT0dRMExXSXhNbVV0WldWbE9HVm1ZMk0xTVdNMw; convos_quick_discount_tooltip=seen; ship_by_date_seller_v_client_timezone_analytics=true; _ga_KLN5K5P8SN=GS2.2.s1759785052$o3$g1$t1759785059$j53$l0$h0; _ga=GA1.1.1113211699.1759346868; gifting_mission_module_occasion={"occasionId":1268340382082,"seenTimestamps":[1759785358738]}; gift_session_v2=Irf3d_RKO9Y9wOAFY-sSdLr6Y-5jZACCjCeGZ2G0IQMA; wedding_session=OJU0bFpuN663WVRqz2iXHq2oabtjZACCjCdGrHAaAA..; _ga_0F5HFTXQHT=GS2.1.s1759929947$o2$g0$t1759929947$j60$l0$h0; dashboard_stats_range=today; AMP_4f4687ed7a=JTdCJTIyZGV2aWNlSWQlMjIlM0ElMjI5ZGM1MmQ3YS02MzMxLTQ3NjgtYjlhZi00MzMzMGRkY2I2NDglMjIlMkMlMjJ1c2VySWQlMjIlM0ElMjIyMWZhNjc4My0wN2FmLTQ1NzAtYjQyNy1iZmI4Y2I2MWM0Y2IlMjIlMkMlMjJzZXNzaW9uSWQlMjIlM0ExNzU5OTQ3Nzc3NDk1JTJDJTIyb3B0T3V0JTIyJTNBZmFsc2UlMkMlMjJsYXN0RXZlbnRUaW1lJTIyJTNBMTc1OTk0Nzg2MzM3NiUyQyUyMmxhc3RFdmVudElkJTIyJTNBMTkxJTJDJTIycGFnZUNvdW50ZXIlMjIlM0EwJTdE; session-key-apex=954738827-1417140746749-d8f51f5464d9a06130d335576515c505e0fef7236695a6925716e01f|1768059731; et-v1-1-1-_etsy_com=2%3A13e805274a66694e12807ae6187ec92ce2444e01%3A1760283731%3A1760283731%3A__athena_compat-954738827-1417140746749-ebe576b9e0d99d115c2994c181530ba4b1d7b40c6581b2e4e3f121617cef5b1eff0e6f64812e71f7; uaid=uJv9anpGzvIYVjJJMj8w3YFMFxhjZACCjLsNy8H0h7LL1UqliZkpSlZKhTkBucmW4cnF_r4GBRFOzsHhpq7e2VEBxWYuVUq1DAA.; enable_http3_www=on; recent_activity_hub={"displayedListingIds":[4381291603,4347892060,1735444926,4376402891,1844892332,4318646413,948852906,1733565204,4365098866,1803222696],"seenTimestamps":[1760396075936,1760589524855,1760633554496],"seenListingIds":[4381291603,1735444926,4347892060,4376402891,1844892332,4318646413,948852906,1733565204,4365098866,1803222696]}; search_options={"prev_search_term":"battle%20droid%20keychain","item_language":null,"language_carousel":null}; web_home_hub={"rotationCounter":1,"merchTitleViewCount":6,"rvListingIDs":[1594562711,1906505719,1871007054,4381291603],"lastMerchTitle":"Holiday made easy"}; session-key-www=954738827-1417140746749-cd3ae61c43009d68e6fca67c551b1d6c200693299a2a442417d6f88a|1768657675; last_browse_page=https%3A%2F%2Fwww.etsy.com%2Fno-en%2Fshop%2FPurpleDahliaStudios; _uetsid=219bd130ac1711f0b7e6c73aed40ce3f; _uetvid=b6de28509efc11f0b9ad21291b80939d; datadome=0dT~zEEqPI_d5seMXxo8NmgjgyuXZ_hcp2CzFVQOiGYHGuuXOQV7biDQkyok_XEsw5kaHTL70GSweCp3gHcD4co0~4_ywz66u9ySY7GVtL7c88KQKEvE3UzWP5t0CNgh; _ga_KR3J610VYM=GS2.1.s1760881705$o61$g1$t1760882184$j60$l0$h0' \
+  --header 'accept: */*' \
+  --header 'accept-language: en-US,en;q=0.9' \
+  --header 'content-type: application/json' \
+  --header 'downlink: 9.65' \
+  --header 'dpr: 2' \
+  --header 'ect: 4g' \
+  --header 'priority: u=1, i' \
+  --header 'referer: https://www.etsy.com/your/shops/me/marketplace-insights/search?query=Gingerbread+Dragon+Crochet&search_trigger=results_search_bar' \
+  --header 'rtt: 150' \
+  --header 'sec-ch-dpr: 2' \
+  --header 'sec-ch-ua: "Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"' \
+  --header 'sec-ch-ua-arch: "arm"' \
+  --header 'sec-ch-ua-bitness: "64"' \
+  --header 'sec-ch-ua-full-version-list: "Google Chrome";v="141.0.7390.107", "Not?A_Brand";v="8.0.0.0", "Chromium";v="141.0.7390.107"' \
+  --header 'sec-ch-ua-mobile: ?0' \
+  --header 'sec-ch-ua-platform: "macOS"' \
+  --header 'sec-ch-ua-platform-version: "26.0.1"' \
+  --header 'sec-fetch-dest: empty' \
+  --header 'sec-fetch-mode: cors' \
+  --header 'sec-fetch-site: same-origin' \
+  --header 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
+  --header 'x-detected-locale: NOK|en-US|NO' \
+  --header 'x-page-guid: 1003df9223be.34247d47ee4e5872818d.00' \
+  --header 'x-transform-response: camel-case' \
+  --cookie 'datadome=s9G_HZFfCgE9SqCh2oBLbj4QnSc9z9nzbHAxWV2mWgczhKg4_fnT1FxHsvM_5Ch8LS3fs9~Yf6ALesxIXDnvYOVf1n7SVz_H5fgLmHJd80b_JI_EuWpyxsFgoyodxcR4; exp_ebid=m%3DMqoa6pCcUgOerYzZJYt7VAM03vow1crE9oKefdcopj4%253D%2Cv%3DnpjOrP_UFfCNqMYshdbXmRCJ_AOnDSfu; fve=1760792323.0'

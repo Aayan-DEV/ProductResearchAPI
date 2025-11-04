@@ -1,0 +1,553 @@
+{
+  "shopTier": 2,
+  "isEtsyPlus": true,
+  "isShopInDeferredDowngrade": false,
+  "isSearchAllowed": true,
+  "isQuotaReached": false,
+  "stats": {
+    "searchTerm": "golf tee holder",
+    "searchTermHash": "777568883595998809",
+    "searchVolume": 1173,
+    "avgTotalListings": 7476
+  },
+  "dailyStats": {
+    "stats": [
+      {
+        "date": "Sep 22",
+        "searchVolume": 63
+      },
+      {
+        "date": "Sep 23",
+        "searchVolume": 28
+      },
+      {
+        "date": "Sep 24",
+        "searchVolume": 34
+      },
+      {
+        "date": "Sep 25",
+        "searchVolume": 35
+      },
+      {
+        "date": "Sep 26",
+        "searchVolume": 38
+      },
+      {
+        "date": "Sep 27",
+        "searchVolume": 44
+      },
+      {
+        "date": "Sep 28",
+        "searchVolume": 62
+      },
+      {
+        "date": "Sep 29",
+        "searchVolume": 21
+      },
+      {
+        "date": "Sep 30",
+        "searchVolume": 23
+      },
+      {
+        "date": "Oct 1",
+        "searchVolume": 49
+      },
+      {
+        "date": "Oct 2",
+        "searchVolume": 40
+      },
+      {
+        "date": "Oct 3",
+        "searchVolume": 29
+      },
+      {
+        "date": "Oct 4",
+        "searchVolume": 55
+      },
+      {
+        "date": "Oct 5",
+        "searchVolume": 21
+      },
+      {
+        "date": "Oct 6",
+        "searchVolume": 11
+      },
+      {
+        "date": "Oct 7",
+        "searchVolume": 51
+      },
+      {
+        "date": "Oct 8",
+        "searchVolume": 39
+      },
+      {
+        "date": "Oct 9",
+        "searchVolume": 20
+      },
+      {
+        "date": "Oct 10",
+        "searchVolume": 20
+      },
+      {
+        "date": "Oct 11",
+        "searchVolume": 35
+      },
+      {
+        "date": "Oct 12",
+        "searchVolume": 44
+      },
+      {
+        "date": "Oct 13",
+        "searchVolume": 15
+      },
+      {
+        "date": "Oct 14",
+        "searchVolume": 32
+      },
+      {
+        "date": "Oct 15",
+        "searchVolume": 40
+      },
+      {
+        "date": "Oct 16",
+        "searchVolume": 33
+      },
+      {
+        "date": "Oct 17",
+        "searchVolume": 57
+      },
+      {
+        "date": "Oct 18",
+        "searchVolume": 51
+      },
+      {
+        "date": "Oct 19",
+        "searchVolume": 95
+      },
+      {
+        "date": "Oct 20",
+        "searchVolume": 41
+      },
+      {
+        "date": "Oct 21",
+        "searchVolume": 37
+      }
+    ]
+  },
+  "quotaData": {
+    "totalQuota": 15,
+    "remainingQuota": 15,
+    "lowRemainingQuotaThreshold": 5
+  },
+  "similarSearchTerms": {
+    "totalResultsCount": 0,
+    "resultsPerPage": 0,
+    "maxViewablePages": null,
+    "lookupFailed": false,
+    "results": []
+  },
+  "shopSubscriptionData": {
+    "shopTier": 2,
+    "isEtsyPlus": true,
+    "isShopInDeferredDowngrade": false,
+    "subscriptionFeeFormatted": "100.20 NOK†",
+    "currency": "NOK",
+    "subscriptionFeeInUsd": null,
+    "startBillingDateFormatted": null,
+    "shouldApplyUsSubscriptionTax": null,
+    "etsyPlusBenefits": [
+      "Advanced shop home customization features",
+      "15 listings credits monthly (30.10 NOK† value)",
+      "50.10 NOK† in Etsy Ads credits monthly",
+      "Restock request",
+      "Custom web address at 50% off via Hover**",
+      "6 months of Adobe Express Premium free***",
+      "Exclusive discounts for subscribers"
+    ],
+    "canShopUpgradeTier": true
+  },
+  "competitiveResearchListingCards": {
+    "listingCards": [
+      {
+        "id": "1856032925",
+        "title": "Golf Bag Tag Personalized Golf Tees,Leather Golf Tee Holder,Custom Men's Name Golf Bag Engraved Tee Gift for Golfer,Golf Accessories for Dad",
+        "rating": "4.8",
+        "numberOfReviews": "1473",
+        "shopName": "GloryByAbbey",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Golf Bag Tag Personalized Golf Tees,Leather Golf Tee Holder,Custom Men&#39;s Name Golf Bag Engraved Tee Gift for Golfer,Golf Accessories for Dad",
+        "imageUrl": "https://i.etsystatic.com/47078079/r/il/704600/6947174120/il_fullxfull.6947174120_az2m.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1856032925/golf-bag-tag-personalized-golf",
+        "shopUrl": "https://www.etsy.com/no-en/shop/GloryByAbbey",
+        "price": {
+          "formattedPrice": "52.80 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1781217581",
+        "title": "Personalized Golf Ball Bag, Mini Golf Ball Holder, Leather Golf Ball Bag, Stylish Pouch for Golf Balls, Tees Holder, Great Golf Gifts",
+        "rating": "4.8",
+        "numberOfReviews": "2442",
+        "shopName": "Charliecreator24",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Personalized Golf Ball Bag, Mini Golf Ball Holder, Leather Golf Ball Bag, Stylish Pouch for Golf Balls, Tees Holder, Great Golf Gifts",
+        "imageUrl": "https://i.etsystatic.com/53384117/r/il/879f8d/6258027301/il_fullxfull.6258027301_4vtp.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1781217581/personalized-golf-ball-bag-mini-golf",
+        "shopUrl": "https://www.etsy.com/no-en/shop/Charliecreator24",
+        "price": {
+          "formattedPrice": "79.20 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1634622940",
+        "title": "Engraved Leather Golf Bag Tag Gift with Golf Tees, Personalized Golf Tee Holder, Custom Golf Accessories, Groomsmen Gifts, Golf Gift For Men",
+        "rating": "4.8",
+        "numberOfReviews": "5360",
+        "shopName": "VOOLLEJewelry",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Engraved Leather Golf Bag Tag Gift with Golf Tees, Personalized Golf Tee Holder, Custom Golf Accessories, Groomsmen Gifts, Golf Gift For Men",
+        "imageUrl": "https://i.etsystatic.com/34786793/r/il/cfc2b3/5684469011/il_fullxfull.5684469011_4b6e.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1634622940/engraved-leather-golf-bag-tag-gift-with",
+        "shopUrl": "https://www.etsy.com/no-en/shop/VOOLLEJewelry",
+        "price": {
+          "formattedPrice": "75.29 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1818802035",
+        "title": "Personalized Golf Tee Holder Bag, Custom Engraved Tee Tag, Leather Golf Tee Holder, Golf Tee Tag, Gift for Him, Christmas Gift",
+        "rating": "4.8",
+        "numberOfReviews": "291",
+        "shopName": "NiceF",
+        "badgeText": null,
+        "isStarSeller": true,
+        "imageAlt": "Personalized Golf Tee Holder Bag, Custom Engraved Tee Tag, Leather Golf Tee Holder, Golf Tee Tag, Gift for Him, Christmas Gift",
+        "imageUrl": "https://i.etsystatic.com/54793356/r/il/42a141/6442415951/il_fullxfull.6442415951_htvs.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1818802035/personalized-golf-tee-holder-bag-custom",
+        "shopUrl": "https://www.etsy.com/no-en/shop/NiceF",
+        "price": {
+          "formattedPrice": "105.49 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "4296655641",
+        "title": "Personalized Golf Tee Holder, Monogram Leather Bag Tag, Best Man Proposal Custom Name Golf Tag, Bachelor Party Favor, Groomsman Golf Gift",
+        "rating": "4.9",
+        "numberOfReviews": "309",
+        "shopName": "VikkyArts",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Personalized Golf Tee Holder, Monogram Leather Bag Tag, Best Man Proposal Custom Name Golf Tag, Bachelor Party Favor, Groomsman Golf Gift",
+        "imageUrl": "https://i.etsystatic.com/44916533/r/il/4e3bdc/6817989516/il_fullxfull.6817989516_dlti.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/4296655641/personalized-golf-tee-holder-monogram",
+        "shopUrl": "https://www.etsy.com/no-en/shop/VikkyArts",
+        "price": {
+          "formattedPrice": "84.48 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "4314156139",
+        "title": "Golf Tee Dispenser | Gun Magazine Tee Holder | Spring Loaded Golf Bag Accessory | Holds 10 Tees | 2.75\" & 3.25\" Sizes | Unique Gift",
+        "rating": "4.9",
+        "numberOfReviews": "134",
+        "shopName": "BusyBeeCreations3D",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Golf Tee Dispenser | Gun Magazine Tee Holder | Spring Loaded Golf Bag Accessory | Holds 10 Tees | 2.75&quot; & 3.25&quot; Sizes | Unique Gift",
+        "imageUrl": "https://i.etsystatic.com/57023582/r/il/3e551d/6925231696/il_fullxfull.6925231696_2lqd.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/4314156139/golf-tee-dispenser-gun-magazine-tee",
+        "shopUrl": "https://www.etsy.com/no-en/shop/BusyBeeCreations3D",
+        "price": {
+          "formattedPrice": "281.41 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "4305696608",
+        "title": "Personalized Leather Golf Bag Tag with Tees,Custom Engraved Golf Tee Holder Gift for Golf Lovers, Unique Golf Accessories, Groomsmen Gift",
+        "rating": "4.9",
+        "numberOfReviews": "13996",
+        "shopName": "LeylaPet",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Personalized Leather Golf Bag Tag with Tees,Custom Engraved Golf Tee Holder Gift for Golf Lovers, Unique Golf Accessories, Groomsmen Gift",
+        "imageUrl": "https://i.etsystatic.com/36124909/r/il/c59eb3/6863423960/il_fullxfull.6863423960_5jwb.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/4305696608/personalized-leather-golf-bag-tag-with",
+        "shopUrl": "https://www.etsy.com/no-en/shop/LeylaPet",
+        "price": {
+          "formattedPrice": "44.03 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1552549598",
+        "title": "Paracord Golf Tee Holder: 550 Carabiner Clip, Golf Bag Accessory",
+        "rating": "5.0",
+        "numberOfReviews": "327",
+        "shopName": "MommaBearsWares",
+        "badgeText": null,
+        "isStarSeller": true,
+        "imageAlt": "Paracord Golf Tee Holder: 550 Carabiner Clip, Golf Bag Accessory",
+        "imageUrl": "https://i.etsystatic.com/7275241/r/il/9734ed/5339740961/il_fullxfull.5339740961_a7d8.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1552549598/paracord-golf-tee-holder-550-carabiner",
+        "shopUrl": "https://www.etsy.com/no-en/shop/MommaBearsWares",
+        "price": {
+          "formattedPrice": "132.00 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1809809161",
+        "title": "Golf Tee Tag - Personalized Golf Gifts for Men or woman - Custom Golf Accessories",
+        "rating": "4.9",
+        "numberOfReviews": "13882",
+        "shopName": "SettingFire",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Golf Tee Tag - Personalized Golf Gifts for Men or woman - Custom Golf Accessories",
+        "imageUrl": "https://i.etsystatic.com/6159761/r/il/760e53/6348582824/il_fullxfull.6348582824_simc.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1809809161/golf-tee-tag-personalized-golf-gifts-for",
+        "shopUrl": "https://www.etsy.com/no-en/shop/SettingFire",
+        "price": {
+          "formattedPrice": "110.88 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1847474824",
+        "title": "Custom Golf Ball Bag with Name & Engraved Tees, Personalized Leather Golf Pouch, Golf Tee Holder Ball Organizer, Golf Keychain for Men",
+        "rating": "4.9",
+        "numberOfReviews": "1906",
+        "shopName": "SupriseAndTreasure",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Custom Golf Ball Bag with Name & Engraved Tees, Personalized Leather Golf Pouch, Golf Tee Holder Ball Organizer, Golf Keychain for Men",
+        "imageUrl": "https://i.etsystatic.com/55341438/r/il/ef2481/6692008504/il_fullxfull.6692008504_5mzh.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1847474824/custom-golf-ball-bag-with-name-engraved",
+        "shopUrl": "https://www.etsy.com/no-en/shop/SupriseAndTreasure",
+        "price": {
+          "formattedPrice": "81.71 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "4362190042",
+        "title": "The Caddy Clip | 3 Golf Ball Holder | 14 Golf Tee Holder | Ball Marker Holder | Hang on Bag | Magnetize to Cart | Customizable | Best Seller",
+        "rating": "0.0",
+        "numberOfReviews": "0",
+        "shopName": "Shellometry",
+        "badgeText": null,
+        "isStarSeller": false,
+        "imageAlt": "The Caddy Clip | 3 Golf Ball Holder | 14 Golf Tee Holder | Ball Marker Holder | Hang on Bag | Magnetize to Cart | Customizable | Best Seller",
+        "imageUrl": "https://i.etsystatic.com/61695061/r/il/7a7e3d/7182194192/il_fullxfull.7182194192_on6m.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/4362190042/the-caddy-clip-3-golf-ball-holder-14",
+        "shopUrl": "https://www.etsy.com/no-en/shop/Shellometry",
+        "price": {
+          "formattedPrice": "158.39 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1761326594",
+        "title": "Premium Smoked Golf Tees",
+        "rating": "4.9",
+        "numberOfReviews": "166",
+        "shopName": "BirdiePerfect",
+        "badgeText": null,
+        "isStarSeller": false,
+        "imageAlt": "Premium Smoked Golf Tees",
+        "imageUrl": "https://i.etsystatic.com/46836461/r/il/2b82d3/6184292514/il_fullxfull.6184292514_8log.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1761326594/premium-smoked-golf-tees",
+        "shopUrl": "https://www.etsy.com/no-en/shop/BirdiePerfect",
+        "price": {
+          "formattedPrice": "147.73 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1790189529",
+        "title": "Personalized Golf Tee Display, Golf Tee Holder, Gift for Dad, Golf Gifts, Custom Golf Gift, Unique Golf Gifts",
+        "rating": "5.0",
+        "numberOfReviews": "1074",
+        "shopName": "AprilWilkersonStore",
+        "badgeText": null,
+        "isStarSeller": true,
+        "imageAlt": "Personalized Golf Tee Display, Golf Tee Holder, Gift for Dad, Golf Gifts, Custom Golf Gift, Unique Golf Gifts",
+        "imageUrl": "https://i.etsystatic.com/36037447/r/il/b5401a/6301845175/il_fullxfull.6301845175_duiv.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1790189529/personalized-golf-tee-display-golf-tee",
+        "shopUrl": "https://www.etsy.com/no-en/shop/AprilWilkersonStore",
+        "price": {
+          "formattedPrice": "306.23 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1614652811",
+        "title": "Teemate Original Golf Tee Holder - Ideal Golf Gift for Wooden Tees / Bamboo Tees / Plastic Tees – Premium Golfing Accessories",
+        "rating": "5.0",
+        "numberOfReviews": "18",
+        "shopName": "Teemategolf",
+        "badgeText": null,
+        "isStarSeller": false,
+        "imageAlt": "Teemate Original Golf Tee Holder - Ideal Golf Gift for Wooden Tees / Bamboo Tees / Plastic Tees – Premium Golfing Accessories",
+        "imageUrl": "https://i.etsystatic.com/48279595/r/il/54d45d/5519761376/il_fullxfull.5519761376_t0o2.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1614652811/teemate-original-golf-tee-holder-ideal",
+        "shopUrl": "https://www.etsy.com/no-en/shop/Teemategolf",
+        "price": {
+          "formattedPrice": "353.97 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1498605619",
+        "title": "Golf Tee Clips - Brim Clip (3 pack)",
+        "rating": "5.0",
+        "numberOfReviews": "318",
+        "shopName": "GolfTeeClips",
+        "badgeText": null,
+        "isStarSeller": true,
+        "imageAlt": "Golf Tee Clips - Brim Clip (3 pack)",
+        "imageUrl": "https://i.etsystatic.com/41775079/r/il/db6eeb/4979684686/il_fullxfull.4979684686_9tx1.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1498605619/golf-tee-clips-brim-clip-3-pack",
+        "shopUrl": "https://www.etsy.com/no-en/shop/GolfTeeClips",
+        "price": {
+          "formattedPrice": "84.37 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1865101287",
+        "title": "Custom Pet Golf Towel Using Pet Photo + Pet Name Personalized Dog Golf Towels Custom Cat Golf Towels Personalised Dog Towel Custom Cat Towel",
+        "rating": "4.7",
+        "numberOfReviews": "61549",
+        "shopName": "ModPawsUS",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Custom Pet Golf Towel Using Pet Photo + Pet Name Personalized Dog Golf Towels Custom Cat Golf Towels Personalised Dog Towel Custom Cat Towel",
+        "imageUrl": "https://i.etsystatic.com/25168585/r/il/473908/6760773282/il_fullxfull.6760773282_6lgv.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1865101287/custom-pet-golf-towel-using-pet-photo",
+        "shopUrl": "https://www.etsy.com/no-en/shop/ModPawsUS",
+        "price": {
+          "formattedPrice": "211.09 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1871779972",
+        "title": "Personalized Vegan Leather Golf Tee Holder: Engraved Golf Bag Tag",
+        "rating": "4.7",
+        "numberOfReviews": "26",
+        "shopName": "CarlaWind",
+        "badgeText": null,
+        "isStarSeller": false,
+        "imageAlt": "Personalized Vegan Leather Golf Tee Holder: Engraved Golf Bag Tag",
+        "imageUrl": "https://i.etsystatic.com/51133251/r/il/7dc8e0/6752073437/il_fullxfull.6752073437_pvxu.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1871779972/personalized-vegan-leather-golf-tee",
+        "shopUrl": "https://www.etsy.com/no-en/shop/CarlaWind",
+        "price": {
+          "formattedPrice": "113.31 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1830372121",
+        "title": "Engraved Leather Golf Bag Tag Gift with Golf Tees, Personalized Golf Tee Holder, Groomsmen Gifts, Custom Golf Accessories,Golf Gift For Men",
+        "rating": "4.8",
+        "numberOfReviews": "837",
+        "shopName": "Yupharetpshop",
+        "badgeText": "Bestseller",
+        "isStarSeller": true,
+        "imageAlt": "Engraved Leather Golf Bag Tag Gift with Golf Tees, Personalized Golf Tee Holder, Groomsmen Gifts, Custom Golf Accessories,Golf Gift For Men",
+        "imageUrl": "https://i.etsystatic.com/51560925/r/il/bba46f/6498886297/il_fullxfull.6498886297_p96l.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1830372121/engraved-leather-golf-bag-tag-gift-with",
+        "shopUrl": "https://www.etsy.com/no-en/shop/Yupharetpshop",
+        "price": {
+          "formattedPrice": "13.20 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1866506102",
+        "title": "Personalized Leather Golf Bag Tag with Tees – Custom Engraved Golf Tee Holder, Unique Golf Accessories, Groomsmen Gift",
+        "rating": "4.9",
+        "numberOfReviews": "57590",
+        "shopName": "CraftsByAden",
+        "badgeText": null,
+        "isStarSeller": true,
+        "imageAlt": "Personalized Leather Golf Bag Tag with Tees – Custom Engraved Golf Tee Holder, Unique Golf Accessories, Groomsmen Gift",
+        "imageUrl": "https://i.etsystatic.com/36383707/r/il/6e3a5a/6725252623/il_fullxfull.6725252623_oguf.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1866506102/personalized-leather-golf-bag-tag-with",
+        "shopUrl": "https://www.etsy.com/no-en/shop/CraftsByAden",
+        "price": {
+          "formattedPrice": "66.83 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      },
+      {
+        "id": "1754217072",
+        "title": "Golf Bag Tag Personalized Golf Tee Holder Golf Gift For Groomsman Custom Groom Gift Leather Golf Tag Custom Golf Accessory Gift For Golfer",
+        "rating": "4.9",
+        "numberOfReviews": "3679",
+        "shopName": "ChristopheArtisanat",
+        "badgeText": null,
+        "isStarSeller": true,
+        "imageAlt": "Golf Bag Tag Personalized Golf Tee Holder Golf Gift For Groomsman Custom Groom Gift Leather Golf Tag Custom Golf Accessory Gift For Golfer",
+        "imageUrl": "https://i.etsystatic.com/37080000/r/il/8c7dce/6151734856/il_fullxfull.6151734856_r2py.jpg",
+        "listingUrl": "https://www.etsy.com/no-en/listing/1754217072/golf-bag-tag-personalized-golf-tee",
+        "shopUrl": "https://www.etsy.com/no-en/shop/ChristopheArtisanat",
+        "price": {
+          "formattedPrice": "142.59 NOK",
+          "formattedOriginalPrice": null,
+          "formattedDiscountText": null,
+          "isDiscounted": false
+        }
+      }
+    ]
+  }
+}

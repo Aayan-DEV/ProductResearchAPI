@@ -1,0 +1,27 @@
+curl --request GET \
+  --url 'https://www.etsy.com/api/v3/ajax/bespoke/member/checkout/cart-list/12463921599/cart/12463921599/listing/4364174055/offerings?listing_title=title' \
+  --header 'Cookie: userSessionId=1761838167145abxdou1sv; uaid=m5Jb8xT2-IatC50QW0ohXIckx5hjZACCTOaWCBhdrVSamJmiZKWUVplTYuIcnF_k5FqRUW6YZ5Yfkpnu5uRYmlLqplTLAAA.; user_prefs=JebGnOkHe1sp1rFu9NgsHHWvUzxjZACCTOaWCBgdrRQa7KKkk1eak6OjlJqnGxqspKMEIsAiRhAKFxHLAAA.; fve=1761838168.0; _fbp=fb.1.1761838168551.7163188085448820; exp_ebid=m=C1%2Fj4YA5jxxoyxN3afMnaZIG1nGKloeHAgCwyIN17E4%3D,v=rSsQG8yaixX1LRs314r4rIrW9wjPBPYO; ua=531227642bc86f3b5fd7103a0c0b4fd6; _ga=GA1.1.190493142.1761838173; _pin_unauth=dWlkPU1qY3lNRGxrWkdNdFlUTXlOaTAwTXpFeExXSXlOVGd0WldFMk5ETTBOMkl5WVdVNQ; _tt_enable_cookie=1; _ttp=01K8TVT67GTR3K3J21H9F3ZSRV_.tt.1; ttcsid_CD255AJC77U2F908QPL0=1761837999612::Pnz8X30uye0Y1mlthi9T.1.1761838176501.0; ttcsid=1761837999613::Upc5KqDlXui_47J71ubr.1.1761838176507.0; lantern=13dcd5b1-604a-4092-a19f-4f674a107561; p=eyJnZHByX3RwIjoxLCJnZHByX3AiOjEsIkFkdmVydGlzaW5nIjoxLCJGdW5jdGlvbmFsIjoxfQ..; gift_session_v2=FZ5wdsr1YOwQ8O5hTl-dpY0QttRjZACCTObmBxC6pdSQAQA.; search_options={"prev_search_term":"personalised","item_language":null,"language_carousel":null}; search_history_v2=q1yHHRuEfaavUfvJL4GkVAagZkhjZACCTObmLRC6lb1aqTg1sSg5I7VYySq6WqmwNLWoUslKqSC1qDg_LzEnszg1RUlHqSQzNzW-uCQxt0DJytDczNDC2MLYxFRHKSOxOL4otbg0pwSovaSoNLVWB7sZCskZRZnFJbmJxdhNM7S0JGRaShp2rQYGZti0xtYyAAA.; wedding_session=dZczdnsT-fRzvG1CW3cnLotMutVjZACCTOZWbjgNAA..; num_listings_clicked_from_search=9mkYCTX1qV0Lf21fkBEnyTgGcuZjZACCTOaWCAjd6l6tVJBaVJyfl5iTWZyaomRlVMsAAA..; _ga_CL7QN58ZCC=GS2.1.s1761838350$o1$g1$t1761838633$j60$l0$h0; last_browse_page=https%3A%2F%2Fwww.etsy.com%2Fshop%2FCuteeForU; g_state={"i_l":0,"i_ll":1761841970468,"i_b":"d04Z6ITjKncTEZnZkERyEieIxSmhiBXu8edX5MVI6lg"}; QSI_HistorySession=https%3A%2F%2Fwww.etsy.com%2Fcart%3Fref%3Dsidebar_cart_view_listing~1761838637456%7Chttps%3A%2F%2Fwww.etsy.com%2Flisting%2F4364174055%2Fpersonalized-book-ornament-custom-book~1761841972177%7Chttps%3A%2F%2Fwww.etsy.com%2Flisting%2F4364174055%2Fpersonalized-book-ornament-custom-book%3Fvariation0%3D5777600739~1761842192724%7Chttps%3A%2F%2Fwww.etsy.com%2Flisting%2F4364174055%2Fpersonalized-book-ornament-custom-book%3F~1761842197298; _gcl_au=1.1.993925187.1761838172.1734908140.1761842199.1761842198; gtm_deferred=%5B%5D; _ga_KR3J610VYM=GS2.1.s1761838173$o1$g1$t1761842202$j51$l0$h0; _uetsid=3d0f0210b5a511f0ad57d11c78baf1b0|1eg86lp|2|g0l|0|2129; _uetvid=d3cbe880b5a411f0a845bd43af9816a7|11bbsba|1761838177460|12|1|bat.bing.com/p/insights/c/a; datadome=gKPoe33Bw0ZHDzEJvt94VEjPwjnfRwoz25zC2PZJNasuBPVTkUaoTvAhJLICtFfQ~6XMwZblGtfBXSETBaZQ6cauhaczFrk3Zf6CsFxadzqsxbZ4q~XLq4TT6g8MmQ3n; AMP_4f4687ed7a=JTdCJTIyZGV2aWNlSWQlMjIlM0ElMjI4YTExY2ZkMy05ZjI1LTRlNjEtYjIxMi0xNGI1YTdhNjNlNGUlMjIlMkMlMjJ1c2VySWQlMjIlM0ElMjJkYTMxOTA2Zi1iMWJhLTQ5MGUtOGNmYy03NTU1MTliOWJiNGMlMjIlMkMlMjJzZXNzaW9uSWQlMjIlM0ExNzYxODM3NzcyNzQ1JTJDJTIyb3B0T3V0JTIyJTNBZmFsc2UlMkMlMjJsYXN0RXZlbnRUaW1lJTIyJTNBMTc2MTg0MjIwMzUzNSUyQyUyMmxhc3RFdmVudElkJTIyJTNBMTM5NyUyQyUyMnBhZ2VDb3VudGVyJTIyJTNBMCU3RA==' \
+  --header 'accept: */*' \
+  --header 'accept-language: en-US,en;q=0.9' \
+  --header 'downlink: 9.65' \
+  --header 'dpr: 2' \
+  --header 'ect: 4g' \
+  --header 'priority: u=1, i' \
+  --header 'referer: https://www.etsy.com/cart?ref=hdr-cart' \
+  --header 'rtt: 100' \
+  --header 'sec-ch-dpr: 2' \
+  --header 'sec-ch-ua: "Google Chrome";v="141", "Not?A_Brand";v="8", "Chromium";v="141"' \
+  --header 'sec-ch-ua-arch: "arm"' \
+  --header 'sec-ch-ua-bitness: "64"' \
+  --header 'sec-ch-ua-full-version-list: "Google Chrome";v="141.0.7390.123", "Not?A_Brand";v="8.0.0.0", "Chromium";v="141.0.7390.123"' \
+  --header 'sec-ch-ua-mobile: ?0' \
+  --header 'sec-ch-ua-platform: "macOS"' \
+  --header 'sec-ch-ua-platform-version: "26.0.1"' \
+  --header 'sec-fetch-dest: empty' \
+  --header 'sec-fetch-mode: cors' \
+  --header 'sec-fetch-site: same-origin' \
+  --header 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36' \
+  --header 'x-detected-locale: USD|en-US|US' \
+  --header 'x-page-guid: 10061bc92586.ede02d528db28e017fb5.00' \
+  --header 'x-requested-with: XMLHttpRequest' \
+  --cookie 'fve=1761838168.0; gtm_deferred=%257B%2522add_to_cart%2522%253A%257B%2522id%2522%253A4364174055%252C%2522product_id%2522%253A%252253209565.4364174055%2522%257D%257D; exp_ebid=m%3DC1%252Fj4YA5jxxoyxN3afMnaZIG1nGKloeHAgCwyIN17E4%253D%2Cv%3DrSsQG8yaixX1LRs314r4rIrW9wjPBPYO'
