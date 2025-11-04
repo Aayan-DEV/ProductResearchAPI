@@ -64,7 +64,6 @@ def ensure_model_available() -> Dict[str, any]:
     """
     Ensure the GGUF model exists at MODEL_PATH.
     If missing and MODEL_URL is set, download it once into the volume.
-    Returns a small status dict.
     """
     model_dir = Path(os.getenv("MODEL_DIR") or "/data/models")
     default_name = "gemma-3n-E4B-it-Q4_K_S.gguf"
@@ -136,7 +135,6 @@ def ensure_model_available() -> Dict[str, any]:
 @app.on_event("startup")
 def _startup_model_check():
     st = ensure_model_available()
-    # Print a concise log line; useful in Railway logs
     print(f"[Startup] model_dir={st['model_dir']} model_present={st['model_present']} size={st['model_size_bytes']} downloaded={st['downloaded']} error={st['error']}", flush=True)
 
 @app.get("/ready")
