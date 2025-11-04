@@ -128,8 +128,8 @@ No code blocks, no explanations, no additional formatting.
 def resolve_model_path_from_env(project_root: Path) -> Optional[Path]:
     """
     Resolve model path from env vars:
-    - MODEL_PATH: direct path to .gguf
-    - MODEL_DIR: directory to search for .gguf candidates
+      - MODEL_PATH: direct path to .gguf
+      - MODEL_DIR: directory to search for .gguf candidates
     """
     p_env = os.getenv("MODEL_PATH")
     if p_env:

@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-# FastAPI service: Etsy Open API search + listingCards orchestration (API-only) with per-user session logging
-
+# module: main.py (add startup model check and /ready endpoint)
 import os
 import sys
 import time
@@ -13,8 +11,9 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Project-relative paths (no hardcoded absolute paths)
 PROJECT_ROOT = Path(__file__).resolve().parent
+OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
+USERS_DIR = os.getenv("AI_USERS_DIR") or str(PROJECT_ROOT / "users")
 OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
 USERS_DIR = os.getenv("AI_USERS_DIR") or str(PROJECT_ROOT / "users")
 TEST_TXT_PATH = os.getenv("ETO_SEARCH_CURL_PATH") or str(
@@ -60,6 +59,103 @@ class RunScriptRequest(BaseModel):
 app = FastAPI(title="AI Keywords Etsy API", version="1.2.0")
 
 # ---------- Utils ----------
+
+def ensure_model_available() -> Dict[str, any]:
+    """
+    Ensure the GGUF model exists at MODEL_PATH.
+    If missing and MODEL_URL is set, download it once into the volume.
+    Returns a small status dict.
+    """
+    model_dir = Path(os.getenv("MODEL_DIR") or "/data/models")
+    default_name = "gemma-3n-E4B-it-Q4_K_S.gguf"
+    model_path = Path(os.getenv("MODEL_PATH") or (model_dir / default_name))
+    model_url = os.getenv("MODEL_URL", "")
+    model_sha256 = os.getenv("MODEL_SHA256", "")
+
+    status = {
+        "model_dir": str(model_dir),
+        "model_path": str(model_path),
+        "model_present": False,
+        "model_size_bytes": None,
+        "volume_mounted": False,
+        "downloaded": False,
+        "error": None,
+    }
+
+    try:
+        model_dir.mkdir(parents=True, exist_ok=True)
+        # Writable volume check
+        test_file = model_dir / ".rw_test"
+        try:
+            test_file.write_text("ok", encoding="utf-8")
+            test_file.unlink(missing_ok=True)
+            status["volume_mounted"] = True
+        except Exception:
+            status["volume_mounted"] = False
+
+        if model_path.exists() and model_path.is_file():
+            status["model_present"] = True
+            status["model_size_bytes"] = model_path.stat().st_size
+            return status
+
+        if not model_url:
+            status["error"] = f"Model missing at {model_path} and MODEL_URL not set"
+            return status
+
+        # Download to temp, stream safely
+        tmp_path = model_path.with_suffix(model_path.suffix + ".tmp")
+        with requests.get(model_url, stream=True, timeout=600) as r:
+            r.raise_for_status()
+            hasher = None
+            if model_sha256:
+                import hashlib
+                hasher = hashlib.sha256()
+            with open(tmp_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+                        if hasher:
+                            hasher.update(chunk)
+
+        # Verify checksum if provided
+        if model_sha256:
+            digest = hasher.hexdigest() if hasher else ""
+            if digest.lower() != model_sha256.strip().lower():
+                tmp_path.unlink(missing_ok=True)
+                raise RuntimeError(f"SHA256 mismatch: expected {model_sha256}, got {digest}")
+
+        tmp_path.replace(model_path)
+        status["downloaded"] = True
+        status["model_present"] = True
+        status["model_size_bytes"] = model_path.stat().st_size
+        return status
+    except Exception as e:
+        status["error"] = str(e)
+        return status
+
+@app.on_event("startup")
+def _startup_model_check():
+    st = ensure_model_available()
+    # Print a concise log line; useful in Railway logs
+    print(f"[Startup] model_dir={st['model_dir']} model_present={st['model_present']} size={st['model_size_bytes']} downloaded={st['downloaded']} error={st['error']}", flush=True)
+
+@app.get("/ready")
+def ready() -> Dict:
+    """
+    Lightweight readiness probe:
+      - volume check
+      - model presence and size
+    """
+    st = ensure_model_available()
+    return {
+        "status": "ok" if st["model_present"] and st["volume_mounted"] and not st["error"] else "degraded",
+        "volume_mounted": st["volume_mounted"],
+        "model_present": st["model_present"],
+        "model_path": st["model_path"],
+        "model_size_bytes": st["model_size_bytes"],
+        "download_attempted": st["downloaded"],
+        "error": st["error"],
+    }
 
 def slugify_safe(text: str) -> str:
     # Reuse helper slugify to keep naming consistent
@@ -1252,3 +1348,7 @@ def run_script(payload: RunScriptRequest) -> Dict:
         except Exception:
             pass
         return {"success": False, "error": str(e)}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8000")))
