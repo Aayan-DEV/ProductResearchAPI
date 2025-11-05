@@ -2,16 +2,22 @@
 set -eu
 
 MODEL_DIR="${MODEL_DIR:-/data/models}"
-MODEL_PATH="${MODEL_PATH:-$MODEL_DIR/gemma-3n-E4B-it-Q4_K_S.gguf}"
+DEFAULT_NAME="gemma-3n-E4B-it-Q4_K_S.gguf"
+MODEL_PATH="${MODEL_PATH:-$MODEL_DIR/$DEFAULT_NAME}"
 MODEL_URL="${MODEL_URL:-}"
 MODEL_SHA256="${MODEL_SHA256:-}"
 
+# Ensure model dir; fallback to /app/data/models if /data is not writable
+mkdir -p "$MODEL_DIR" || true
+if ! (echo "ok" > "$MODEL_DIR/.rw_test" 2>/dev/null && rm -f "$MODEL_DIR/.rw_test"); then
+  MODEL_DIR="/app/data/models"
+  MODEL_PATH="$MODEL_DIR/$DEFAULT_NAME"
+fi
 mkdir -p "$MODEL_DIR"
 
 if [ ! -f "$MODEL_PATH" ]; then
   if [ -z "$MODEL_URL" ]; then
     echo "MODEL_URL not set and model not found at $MODEL_PATH"
-    echo "Set MODEL_URL to a public or pre-signed URL to the .gguf file."
     exit 1
   fi
 
@@ -30,4 +36,4 @@ else
   echo "Model already present at $MODEL_PATH"
 fi
 
-exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers "${WORKERS:-2}"
+exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}" --workers "${WORKERS:-1}"

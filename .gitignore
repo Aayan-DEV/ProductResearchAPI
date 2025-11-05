@@ -16,3 +16,5 @@ gemma-3n-E4B-it-GGUF/
 
 # OS/IDE cruft
 .DS_Store
+
+data/

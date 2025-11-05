@@ -7,11 +7,39 @@ from pathlib import Path
 from typing import Optional, Dict, List
 import requests
 from dotenv import load_dotenv
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+import threading
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+HELPERS_DIR = PROJECT_ROOT / "Helpers"
+if str(HELPERS_DIR) not in sys.path:
+    sys.path.insert(0, str(HELPERS_DIR))
+
+import first_etsy_api_use as etsy
+import third_ai_keywords as ai
+import fourth_everbee_keyword as everbee
+
+# Simple in-memory progress tracker (per-process)
+download_progress: Dict[str, Optional[float | int | str]] = {
+    "status": "idle",               # idle | downloading | complete | error
+    "source": None,                 # URL
+    "destination": None,            # file path
+    "total_bytes": None,            # int or None if unknown
+    "downloaded_bytes": 0,          # int
+    "percent": None,                # float 0..100 or None
+    "speed_bps": None,              # float bytes/sec
+    "eta_seconds": None,            # float seconds or None
+    "started_at": None,             # epoch seconds
+    "updated_at": None,             # epoch seconds
+    "error": None,                  # str
+}
+download_lock = threading.Lock()
 
 # Load environment variables
 load_dotenv()
 
-PROJECT_ROOT = Path(__file__).resolve().parent
 OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
 USERS_DIR = os.getenv("AI_USERS_DIR") or str(PROJECT_ROOT / "users")
 OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
@@ -20,26 +48,12 @@ TEST_TXT_PATH = os.getenv("ETO_SEARCH_CURL_PATH") or str(
     PROJECT_ROOT / "EtoRequests" / "Search_request" / "txt_files" / "1" / "EtoRequest1.txt"
 )
 
-# Ensure we can import helpers from subfolder
-HELPERS_DIR = PROJECT_ROOT / "Helpers"
-if str(HELPERS_DIR) not in sys.path:
-    sys.path.insert(0, str(HELPERS_DIR))
-
-# Import the existing implementation as a library and align its config
-import first_etsy_api_use as etsy
-import third_ai_keywords as ai
-import fourth_everbee_keyword as everbee
-
 # Align helper module config to project root for API-only usage
 etsy.PROJECT_ROOT = PROJECT_ROOT
 etsy.OUTPUT_DIR = OUTPUT_DIR
 etsy.TEST_TXT_PATH = TEST_TXT_PATH
 etsy.API_KEYSTRING = os.getenv("ETSY_X_API_KEY") or os.getenv("ETSY_API_KEYSTRING") or ""
 etsy.SHARED_SECRET = os.getenv("SHARED_SECRET", "")
-
-# API server
-from fastapi import FastAPI
-from pydantic import BaseModel, Field
 
 # ---------- Models ----------
 
@@ -63,17 +77,23 @@ app = FastAPI(title="AI Keywords Etsy API", version="1.2.0")
 def ensure_model_available() -> Dict[str, any]:
     """
     Ensure the GGUF model exists at MODEL_PATH.
-    If missing and MODEL_URL is set, download it once into the volume.
+    If missing and MODEL_URL is set, download it once.
+    Fallback to PROJECT_ROOT/data/models when /data is not writable (local dev).
     """
-    model_dir = Path(os.getenv("MODEL_DIR") or "/data/models")
+    project_root = Path(__file__).resolve().parent
+    preferred_dir = Path(os.getenv("MODEL_DIR") or "/data/models")
+    fallback_dir = project_root / "data" / "models"
+
     default_name = "gemma-3n-E4B-it-Q4_K_S.gguf"
-    model_path = Path(os.getenv("MODEL_PATH") or (model_dir / default_name))
+    model_path_env = os.getenv("MODEL_PATH")
     model_url = os.getenv("MODEL_URL", "")
     model_sha256 = os.getenv("MODEL_SHA256", "")
 
+    # Decide model_dir based on writability
+    model_dir = preferred_dir
     status = {
         "model_dir": str(model_dir),
-        "model_path": str(model_path),
+        "model_path": None,
         "model_present": False,
         "model_size_bytes": None,
         "volume_mounted": False,
@@ -82,77 +102,218 @@ def ensure_model_available() -> Dict[str, any]:
     }
 
     try:
-        model_dir.mkdir(parents=True, exist_ok=True)
-        # Writable volume check
-        test_file = model_dir / ".rw_test"
+        # Try preferred dir (/data/models)
         try:
+            model_dir.mkdir(parents=True, exist_ok=True)
+            test_file = model_dir / ".rw_test"
             test_file.write_text("ok", encoding="utf-8")
             test_file.unlink(missing_ok=True)
             status["volume_mounted"] = True
         except Exception:
+            # Fallback to local project dir
+            model_dir = fallback_dir
             status["volume_mounted"] = False
+            status["model_dir"] = str(model_dir)
+            model_dir.mkdir(parents=True, exist_ok=True)
 
+        # Resolve model_path
+        if model_path_env:
+            mp = Path(model_path_env)
+            if not mp.is_absolute():
+                mp = project_root / mp
+            model_path = mp
+        else:
+            model_path = model_dir / default_name
+        status["model_path"] = str(model_path)
+
+        # Short-circuit if present
         if model_path.exists() and model_path.is_file():
             status["model_present"] = True
             status["model_size_bytes"] = model_path.stat().st_size
+            # Reset progress (already present)
+            download_progress.update({
+                "status": "idle",
+                "source": None,
+                "destination": str(model_path),
+                "total_bytes": status["model_size_bytes"],
+                "downloaded_bytes": status["model_size_bytes"],
+                "percent": 100.0,
+                "speed_bps": None,
+                "eta_seconds": 0.0,
+                "started_at": None,
+                "updated_at": time.time(),
+                "error": None,
+            })
             return status
 
         if not model_url:
             status["error"] = f"Model missing at {model_path} and MODEL_URL not set"
             return status
 
-        # Download to temp, stream safely
+        # Robust download with simple retry/backoff
         tmp_path = model_path.with_suffix(model_path.suffix + ".tmp")
-        with requests.get(model_url, stream=True, timeout=600) as r:
-            r.raise_for_status()
-            hasher = None
-            if model_sha256:
-                import hashlib
-                hasher = hashlib.sha256()
-            with open(tmp_path, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-                        if hasher:
-                            hasher.update(chunk)
+        tries = 3
+        last_err = None
+        for i in range(1, tries + 1):
+            try:
+                # Ensure only one concurrent download attempt
+                with download_lock:
+                    # Initialize progress
+                    download_progress.update({
+                        "status": "downloading",
+                        "source": model_url,
+                        "destination": str(model_path),
+                        "total_bytes": None,
+                        "downloaded_bytes": 0,
+                        "percent": None,
+                        "speed_bps": None,
+                        "eta_seconds": None,
+                        "started_at": time.time(),
+                        "updated_at": time.time(),
+                        "error": None,
+                    })
+                    last_logged_percent = -5.0
+                    last_logged_time = time.time()
 
-        # Verify checksum if provided
-        if model_sha256:
-            digest = hasher.hexdigest() if hasher else ""
-            if digest.lower() != model_sha256.strip().lower():
-                tmp_path.unlink(missing_ok=True)
-                raise RuntimeError(f"SHA256 mismatch: expected {model_sha256}, got {digest}")
+                    with requests.get(model_url, stream=True, timeout=600) as r:
+                        r.raise_for_status()
+                        total_hdr = r.headers.get("Content-Length")
+                        total = int(total_hdr) if total_hdr and total_hdr.isdigit() else None
+                        download_progress["total_bytes"] = total
 
-        tmp_path.replace(model_path)
-        status["downloaded"] = True
-        status["model_present"] = True
-        status["model_size_bytes"] = model_path.stat().st_size
+                        hasher = None
+                        if model_sha256:
+                            import hashlib
+                            hasher = hashlib.sha256()
+
+                        downloaded = 0
+                        start_t = time.time()
+                        with open(tmp_path, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                                if not chunk:
+                                    continue
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                if hasher:
+                                    hasher.update(chunk)
+
+                                # Update progress metrics
+                                now = time.time()
+                                elapsed = max(now - start_t, 1e-6)
+                                speed = downloaded / elapsed
+                                percent = (downloaded / total * 100.0) if total else None
+                                eta = ((total - downloaded) / speed) if (total and speed > 0) else None
+
+                                download_progress.update({
+                                    "downloaded_bytes": downloaded,
+                                    "speed_bps": speed,
+                                    "percent": percent,
+                                    "eta_seconds": eta,
+                                    "updated_at": now,
+                                })
+
+                                # Periodic log every 5 seconds or +5% progress
+                                should_log = (now - last_logged_time >= 5.0) or (
+                                    percent is not None and percent - last_logged_percent >= 5.0
+                                )
+                                if should_log:
+                                    last_logged_time = now
+                                    last_logged_percent = percent or last_logged_percent
+                                    if percent is not None:
+                                        print(f"[Download] {percent:.1f}% ({downloaded}/{total} bytes) "
+                                              f"speed={speed/1e6:.2f} MB/s eta={int(eta or 0)}s", flush=True)
+                                    else:
+                                        print(f"[Download] {downloaded} bytes streamed "
+                                              f"speed={speed/1e6:.2f} MB/s", flush=True)
+
+                    # Checksum if provided
+                    if model_sha256:
+                        digest = hasher.hexdigest() if hasher else ""
+                        if digest.lower() != model_sha256.strip().lower():
+                            tmp_path.unlink(missing_ok=True)
+                            raise RuntimeError(f"SHA256 mismatch: expected {model_sha256}, got {digest}")
+
+                    # Finalize
+                    tmp_path.replace(model_path)
+                    status["downloaded"] = True
+                    status["model_present"] = True
+                    status["model_size_bytes"] = model_path.stat().st_size
+
+                    download_progress.update({
+                        "status": "complete",
+                        "destination": str(model_path),
+                        "total_bytes": status["model_size_bytes"],
+                        "downloaded_bytes": status["model_size_bytes"],
+                        "percent": 100.0,
+                        "eta_seconds": 0.0,
+                        "updated_at": time.time(),
+                    })
+                    return status
+            except Exception as e:
+                last_err = e
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                backoff = 2 ** (i - 1)
+                download_progress.update({
+                    "status": "error",
+                    "error": str(e),
+                    "updated_at": time.time(),
+                })
+                print(f"[Startup] Download attempt {i}/{tries} failed: {e}. Retrying in {backoff}s...", flush=True)
+                time.sleep(backoff)
+
+        status["error"] = f"Download failed after {tries} attempts: {last_err}"
         return status
     except Exception as e:
         status["error"] = str(e)
         return status
 
-@app.on_event("startup")
-def _startup_model_check():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     st = ensure_model_available()
     print(f"[Startup] model_dir={st['model_dir']} model_present={st['model_present']} size={st['model_size_bytes']} downloaded={st['downloaded']} error={st['error']}", flush=True)
+    yield
+
+# Swap to lifespan (deprecates @app.on_event)
+app = FastAPI(title="AI Keywords Etsy API", version="1.2.0", lifespan=lifespan)
 
 @app.get("/ready")
 def ready() -> Dict:
-    """
-    Lightweight readiness probe:
-      - volume check
-      - model presence and size
-    """
     st = ensure_model_available()
     return {
-        "status": "ok" if st["model_present"] and st["volume_mounted"] and not st["error"] else "degraded",
-        "volume_mounted": st["volume_mounted"],
-        "model_present": st["model_present"],
+        "status": "ok" if st["model_present"] and not st["error"] else "degraded",
+        "model_dir": st["model_dir"],
         "model_path": st["model_path"],
+        "model_present": st["model_present"],
         "model_size_bytes": st["model_size_bytes"],
         "download_attempted": st["downloaded"],
+        "volume_mounted": st["volume_mounted"],
         "error": st["error"],
+        # Progress details
+        "download_progress": {
+            "status": download_progress["status"],
+            "total_bytes": download_progress["total_bytes"],
+            "downloaded_bytes": download_progress["downloaded_bytes"],
+            "percent": download_progress["percent"],
+            "speed_bps": download_progress["speed_bps"],
+            "eta_seconds": download_progress["eta_seconds"],
+            "started_at": download_progress["started_at"],
+            "updated_at": download_progress["updated_at"],
+            "source": download_progress["source"],
+            "destination": download_progress["destination"],
+            "error": download_progress["error"],
+        },
+    }
+
+
+@app.get("/download/status")
+def download_status() -> Dict:
+    # Lightweight, separate status endpoint
+    return {
+        "success": True,
+        "progress": download_progress,
     }
 
 def slugify_safe(text: str) -> str:
