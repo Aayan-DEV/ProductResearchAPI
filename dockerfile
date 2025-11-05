@@ -1,38 +1,35 @@
-# Python runtime (match local dev: 3.13)
+# Python base; 3.13 matches your current environment
 FROM python:3.13-slim
 
-# Prevent .pyc and ensure stdout/stderr are unbuffered
+# Runtime defaults and model location on Railway volume
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
-    WORKERS=2
-
-# Install curl for model download
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
-
-# Install deps first (leverages Docker layer caching)
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/requirements.txt
-
-# Defaults for model location inside Railway volume
-ENV MODEL_DIR=/data/models \
+    WORKERS=1 \
+    MODEL_DIR=/data/models \
     MODEL_PATH=/data/models/gemma-3n-E4B-it-Q4_K_S.gguf
 
-# Install deps first (leverages Docker layer caching)
+# Curl for model download + TLS certs
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# App directory
+WORKDIR /app
+
+# Install Python dependencies (layer-cached)
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r /app/requirements.txt
 
-# Copy the rest of the project
+# Copy source and make bootstrap executable
 COPY . /app
 RUN chmod +x /app/bootstrap.sh
 
-# Expose default port (can override by setting PORT)
+# Expose service port
 EXPOSE 8000
 
-# Start FastAPI via uvicorn; honors $PORT and $WORKERS
+# Healthcheck using existing /health endpoint in main.py
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD ["sh", "-c", "curl -fsS http://localhost:${PORT:-8000}/health || exit 1"]
+
+# Entrypoint: downloads model if missing, then runs uvicorn
 CMD ["sh", "/app/bootstrap.sh"]
