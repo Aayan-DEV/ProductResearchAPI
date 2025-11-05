@@ -1,34 +1,43 @@
-# Python base; 3.13 matches your current environment
 FROM python:3.13-slim
 
+# Runtime configuration
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
     WORKERS=1 \
     MODEL_DIR=/data/models \
-    MODEL_PATH=/data/models/gemma-3n-E4B-it-Q4_K_S.gguf
+    MODEL_PATH=/data/models/gemma-3n-E4B-it-Q4_K_S.gguf \
+    PIP_NO_CACHE_DIR=1 \
+    CMAKE_ARGS="-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS" \
+    LLAMA_CPP_USE_OPENBLAS=1
 
-# Curl for model download + TLS certs
-RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
+# System deps (curl for healthcheck; build-essential/cmake/openblas for llama-cpp-python)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    ca-certificates \
+    build-essential \
+    cmake \
+    git \
+    libopenblas-dev \
+ && rm -rf /var/lib/apt/lists/*
 
-# App directory
+# App setup
 WORKDIR /app
 
-# Install Python dependencies (layer-cached)
+# Install Python deps first to leverage layer caching
 COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --upgrade pip && \
+    pip install -r /app/requirements.txt
 
-# Copy source and make bootstrap executable
+# Copy source
 COPY . /app
-RUN chmod +x /app/bootstrap.sh
 
-# Expose service port
+# Healthcheck for Railway
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD curl -fsS http://localhost:${PORT}/health || exit 1
+
+# Port hint (Railway injects PORT env, we honor it)
 EXPOSE 8000
 
-# Healthcheck using existing /health endpoint in main.py
-HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-    CMD ["sh", "-c", "curl -fsS http://localhost:${PORT:-8000}/health || exit 1"]
-
-# Entrypoint: downloads model if missing, then runs uvicorn
+# Start FastAPI via uvicorn; honors $PORT and $WORKERS
 CMD ["python","-m","uvicorn","main:app","--host","0.0.0.0","--port","${PORT}","--workers","${WORKERS}"]

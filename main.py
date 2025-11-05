@@ -304,6 +304,7 @@ async def lifespan(app: FastAPI):
         f"size={st['model_size_bytes']} downloaded={st['downloaded']} error={st['error']}",
         flush=True,
     )
+    threading.Thread(target=ensure_model_available, daemon=True, name="model-ensure").start()
     yield
 
 # Swap to lifespan (deprecates @app.on_event)
@@ -1534,7 +1535,15 @@ def run_stream(payload: RunRequest):
                     last_keepalive = now
                     yield f": keepalive {int(now)}\n\n"
 
-    return StreamingResponse(sse_iter(), media_type="text/event-stream")
+    return StreamingResponse(
+        sse_iter(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 @app.get("/health")
 def health() -> Dict:
