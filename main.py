@@ -850,6 +850,12 @@ def build_second_step_demand_summary(run_root_dir: str, popular_listings_path: s
     # NEW: collect per-listing sale info
     sale_info_map = collect_listing_sale_info_per_listing(cart_runs_root)
 
+    # NEW: collect per-listing shop info (details, sections, up to 100 reviews)
+    try:
+        shop_map = etsy.collect_shop_info_map_for_listings(popular_obj.get("listings") or [], reviews_limit=100)
+    except Exception:
+        shop_map = {}
+
     enriched_listings: List[Dict] = []
     for it in (popular_obj.get("listings") or []):
         lid = it.get("listing_id") or it.get("listingId")
@@ -868,6 +874,9 @@ def build_second_step_demand_summary(run_root_dir: str, popular_listings_path: s
         # NEW: Attach sale info if available
         if li is not None and li in sale_info_map:
             enriched["sale_info"] = sale_info_map.get(li)
+        # NEW: Attach shop info per listing
+        if li is not None and li in shop_map:
+            enriched["shop"] = shop_map.get(li)
         enriched_listings.append(enriched)
 
     summary_obj = {
@@ -966,6 +975,8 @@ def build_megafile_from_outputs(outputs_dir: str, second_step_summary_path: str,
             "primary_image": it.get("primary_image"),
             "variations_cleaned": it.get("variations_cleaned"),
             "sale_info": it.get("sale_info"),
+            # NEW: Copy shop info to top-level for convenience
+            "shop": it.get("shop"),
             "source_paths": {
                 "summary_source": str(second_step_summary_path),
                 "ai_keywords_source": str(Path(outputs_dir) / f"ai_keywords_results_{slug}.json"),
@@ -978,7 +989,7 @@ def build_megafile_from_outputs(outputs_dir: str, second_step_summary_path: str,
             "timestamp": _time.strftime("%Y-%m-%dT%H:%M:%S"),
         }
         entries.append(entry)
-
+        
     megafile_path = Path(outputs_dir) / f"megafile_listings_{slug}.json"
     # Write entries plus meta counts — includes processed_total=0 explicitly
     write_json_file(str(megafile_path), {

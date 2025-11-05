@@ -5,6 +5,7 @@ import sys
 import time
 import html
 from typing import Dict, Tuple, List, Optional
+from unittest.signals import registerResult
 import requests
 from pathlib import Path
 from dotenv import load_dotenv
@@ -79,8 +80,176 @@ def fetch_listings_by_keyword(keyword: str, limit: int = 100, offset: int = 0) -
     resp.raise_for_status()
     return resp.json()
 
+def fetch_shop_info(shop_id: int, reviews_limit: int = 100) -> Dict:
+    """
+    Fetch broad shop information and return it under a unified object:
+    - details: /v3/application/shops/{id}
+    - sections: /v3/application/shops/{id}/sections (paginated)
+    - reviews: /v3/application/shops/{id}/reviews (first 100 only)
+    Gracefully records errors without throwing.
+    """
+    sid = int(str(shop_id))
+    headers = {
+        "x-api-key": API_KEYSTRING,
+        "accept": "application/json",
+    }
+    # If OAuth is present, include it (may unlock more fields); otherwise it's fine
+    oauth = os.getenv("ETSY_ACCESS_TOKEN") or os.getenv("ETSY_BEARER_TOKEN") or os.getenv("ETSY_OAUTH_TOKEN")
+    if oauth:
+        headers["authorization"] = f"Bearer {oauth}"
 
-def fetch_listings_aggregated(keyword: str, desired_total: Optional[int] = None, page_size: int = V3_PAGE_SIZE) -> Dict:
+    result: Dict = {
+        "shop_id": sid,
+        "details": None,
+        "sections": [],
+        "reviews": [],
+        "errors": {},
+    }
+
+    # Shop details
+    details_url = f"{OPENAPI_BASE}/v3/application/shops/{sid}"
+    for attempt in range(5):
+        try:
+            resp = requests.get(details_url, headers=headers, timeout=HTTP_TIMEOUT)
+            status = resp.status_code
+            if status in (429,) or (500 <= status < 600):
+                backoff_sleep(attempt)
+                continue
+            try:
+                data = resp.json()
+            except Exception:
+                data = None
+            if status >= 400:
+                result["errors"]["details"] = {
+                    "status": status,
+                    "url": resp.url,
+                    "response": data,
+                }
+            else:
+                result["details"] = data
+            break
+        except requests.RequestException as e:
+            if attempt == 4:
+                result["errors"]["details"] = {"status": None, "message": str(e), "url": details_url}
+            else:
+                backoff_sleep(attempt)
+
+    # Sections (paginate until exhausted)
+    sections_url = f"{OPENAPI_BASE}/v3/application/shops/{sid}/sections"
+    offset = 0
+    limit = 100
+    while True:
+        try:
+            resp = requests.get(sections_url, headers=headers, params={"limit": limit, "offset": offset}, timeout=HTTP_TIMEOUT)
+            status = resp.status_code
+            if status in (429,) or (500 <= status < 600):
+                backoff_sleep(0)
+                continue
+            try:
+                data = resp.json()
+            except Exception:
+                data = None
+            if status >= 400:
+                result["errors"]["sections"] = {
+                    "status": status,
+                    "url": resp.url,
+                    "response": data,
+                }
+                break
+            page = []
+            if isinstance(data, dict):
+                page = data.get("results") or []
+                if not page and isinstance(data.get("data"), list):
+                    page = data["data"]
+            if not page:
+                break
+            result["sections"].extend(page)
+            fetched = len(page)
+            if fetched < limit:
+                break
+            offset += fetched
+        except requests.RequestException as e:
+            result["errors"]["sections"] = {"status": None, "message": str(e), "url": sections_url}
+            break
+
+    # Reviews: first 100 only
+    reviews_url = f"{OPENAPI_BASE}/v3/application/shops/{sid}/reviews"
+    reviews_limit = max(1, min(100, int(str(reviews_limit or 100))))
+    try:
+        resp = requests.get(reviews_url, headers=headers, params={"limit": reviews_limit, "offset": 0}, timeout=HTTP_TIMEOUT)
+        status = resp.status_code
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+        if status >= 400:
+            result["errors"]["reviews"] = {
+                "status": status,
+                "url": resp.url,
+                "response": data,
+            }
+        else:
+            page = []
+            if isinstance(data, dict):
+                page = data.get("results") or []
+                if not page and isinstance(data.get("data"), list):
+                    page = data["data"]
+            if isinstance(page, list):
+                result["reviews"] = page[:reviews_limit]
+    except requests.RequestException as e:
+        result["errors"]["reviews"] = {"status": None, "message": str(e), "url": reviews_url}
+
+    return result
+
+def collect_shop_info_map_for_listings(listings: List[Dict], reviews_limit: int = 100) -> Dict[int, Dict]:
+    """
+    Build a map of listing_id -> 'shop' dict by fetching public shop details, sections,
+    and up to the first 100 reviews per unique shop_id found in `listings`.
+    Gracefully handles errors; failed fetches produce minimal objects with 'errors'.
+    """
+    # Unique shops first to avoid redundant calls
+    unique_shop_ids: List[int] = []
+    for it in (listings or []):
+        sid = it.get("shop_id")
+        try:
+            sid_int = int(str(sid))
+        except Exception:
+            continue
+        if sid_int not in unique_shop_ids:
+            unique_shop_ids.append(sid_int)
+
+    shop_info_by_sid: Dict[int, Dict] = {}
+    for sid in unique_shop_ids:
+        try:
+            shop_info_by_sid[sid] = fetch_shop_info(sid, reviews_limit=reviews_limit)
+        except Exception as e:
+            shop_info_by_sid[sid] = {
+                "shop_id": sid,
+                "details": None,
+                "sections": [],
+                "reviews": [],
+                "errors": {"fetch": str(e)},
+            }
+
+    by_listing_id: Dict[int, Dict] = {}
+    for it in (listings or []):
+        lid = it.get("listing_id") or it.get("listingId")
+        sid = it.get("shop_id")
+        try:
+            li = int(str(lid))
+            si = int(str(sid))
+        except Exception:
+            continue
+        by_listing_id[li] = shop_info_by_sid.get(si) or {
+            "shop_id": si,
+            "details": None,
+            "sections": [],
+            "reviews": [],
+            "errors": {"missing": True},
+        }
+    return by_listing_id
+
+def fetch_listings_aggregated(keyword: str, desired_total: Optional[int] = None, page_size: int = V3_PAGE_SIZE, shop_id_for_info: Optional[int] = None) -> Dict:
     """
     Paginate Etsy v3 search results until desired_total or until no more pages.
     desired_total=None means fetch all available (subject to API offset constraints).
@@ -150,6 +319,15 @@ def fetch_listings_aggregated(keyword: str, desired_total: Optional[int] = None,
         },
         "results": aggregated_results,
     }
+    # Optionally attach complete shop info under "shop"
+    if shop_id_for_info is not None:
+        try:
+            aggregated_json["shop"] = fetch_shop_info(int(str(shop_id_for_info)), reviews_limit=20)
+        except Exception as e:
+            aggregated_json["shop"] = {
+                "shop_id": shop_id_for_info,
+                "error": f"failed to fetch shop info: {e}",
+            }
     return aggregated_json
 
 
