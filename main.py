@@ -298,12 +298,6 @@ def ensure_model_available() -> Dict[str, any]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    st = ensure_model_available()
-    print(
-        f"[Startup] model_dir={st['model_dir']} model_present={st['model_present']} "
-        f"size={st['model_size_bytes']} downloaded={st['downloaded']} error={st['error']}",
-        flush=True,
-    )
     threading.Thread(target=ensure_model_available, daemon=True, name="model-ensure").start()
     yield
 
@@ -1726,4 +1720,5 @@ def run_script(payload: RunScriptRequest) -> Dict:
         return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
