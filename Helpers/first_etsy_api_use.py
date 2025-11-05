@@ -933,7 +933,7 @@ def run_listingcards_curl_for_ids(
         except Exception:
             popular_ids_chunk, all_ids_chunk = [], []
         html_ids_all.extend(all_ids_chunk or [])
-        # dedupe
+        # dedupe popular IDs for this chunk
         chunk_unique: List[int] = []
         _chunk_seen: set = set()
         for _pid in popular_ids_chunk or []:
@@ -945,18 +945,9 @@ def run_listingcards_curl_for_ids(
                 _chunk_seen.add(_pid_int)
                 chunk_unique.append(_pid_int)
         new_popular = [pid for pid in chunk_unique if pid not in seen_popular_ids]
-        # queue all listing ids from this batch (not only popular)
-        chunk_all_unique: List[int] = []
-        _all_seen: set = set()
-        for _aid in all_ids_chunk or []:
-            try:
-                _aid_int = int(str(_aid))
-            except Exception:
-                continue
-            if _aid_int not in _all_seen:
-                _all_seen.add(_aid_int)
-                chunk_all_unique.append(_aid_int)
-        new_to_queue = [lid for lid in chunk_all_unique if lid not in seen_queued_ids]
+
+        # QUEUE ONLY POPULAR IDS (restrict processing strictly to popular-now)
+        new_to_queue = [pid for pid in new_popular if pid not in seen_queued_ids]
         queue_total_after = None
         if queue_path and queue_user_id:
             if new_to_queue:
@@ -974,6 +965,7 @@ def run_listingcards_curl_for_ids(
                     queue_total_after = len(qobj.get("items", []))
                 except Exception:
                     queue_total_after = None
+
         if new_popular:
             _append_realtime_popular(new_popular)
             aggregate_popular_ids.extend(new_popular)
