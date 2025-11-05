@@ -771,6 +771,8 @@ def run_listingcards_curl_for_ids(
     queue_user_id: Optional[str] = None,
     popular_listings_path: Optional[str] = None,
     search_json: Optional[Dict] = None,
+    progress_path: Optional[str] = None,  # NEW: write Splitting progress here
+    progress_cb: Optional[callable] = None,  # NEW: streaming progress callback
 ) -> Dict:
     """
     Execute listingCards cURL in chunks. Save raw and HTML per chunk.
@@ -869,6 +871,20 @@ def run_listingcards_curl_for_ids(
     html_ids_all: List[int] = []
     seen_queued_ids: set = set()
 
+    # Emit initial splitting totals
+    try:
+        if progress_cb:
+            total_chunks = len(chunks)
+            progress_cb({
+                "stage": "splitting",
+                "user_id": queue_user_id or "n/a",
+                "remaining": total_chunks,
+                "total": total_chunks,
+                "message": f"Splitting initialized: {total_chunks} parts",
+            })
+    except Exception:
+        pass
+
     for idx, chunk in enumerate(chunks, start=1):
         try:
             chunk_data = replace_listing_ids_in_curl_data(json.loads(json.dumps(data_obj)), chunk)
@@ -966,6 +982,21 @@ def run_listingcards_curl_for_ids(
         try:
             total_str = f" total_in_queue={queue_total_after}" if queue_total_after is not None else ""
             print(f"[First Etsy Api Popular Products Queue] user={queue_user_id or 'n/a'} chunk={idx} detected_popular={len(popular_ids_chunk)} new_popular_added={len(new_popular)} new_queued={len(new_to_queue)}{total_str}")
+        except Exception:
+            pass
+
+        # Emit splitting progress after each chunk
+        try:
+            if progress_cb:
+                total_chunks = len(chunks)
+                remaining_after = max(0, total_chunks - idx)
+                progress_cb({
+                    "stage": "splitting",
+                    "user_id": queue_user_id or "n/a",
+                    "remaining": remaining_after,
+                    "total": total_chunks,
+                    "message": f"Chunk {idx}/{total_chunks} processed",
+                })
         except Exception:
             pass
     

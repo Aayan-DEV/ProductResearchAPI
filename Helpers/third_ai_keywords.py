@@ -571,39 +571,47 @@ def generate_keywords_for_title(llm, title: str) -> Tuple[List[str], str]:
     """
     Returns (keywords, raw_model_output)
     """
+    sem = globals().get("_LLM_INFER_SEMAPHORE")
+    if sem is None:
+        import threading, os
+        sem = threading.Semaphore(int(os.getenv("AI_CONCURRENCY", "1")))
+        globals()["_LLM_INFER_SEMAPHORE"] = sem
+
     user_prompt = (
         f"Product title:\n{title}\n\n"
         f"Return ONLY a JSON array of 3–8 concise, non-generic, commercial-intent keyword phrases (2–4 words)."
     )
+
     try:
-        # Prefer chat completion if available
-        has_chat = hasattr(llm, "create_chat_completion")
-        if has_chat:
-            resp = llm.create_chat_completion(
-                messages=[
-                    {"role": "system", "content": SEO_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=GEN_TEMPERATURE,
-                top_p=GEN_TOP_P,
-                max_tokens=GEN_MAX_TOKENS,
-            )
-            content = resp["choices"][0]["message"]["content"]
-        else:
-            # Fallback to plain completion
-            prompt = (
-                f"[SYSTEM]\n{SEO_SYSTEM_PROMPT}\n\n"
-                f"[USER]\n{user_prompt}\n\n"
-                f"[ASSISTANT]\n"
-            )
-            resp = llm.create_completion(
-                prompt=prompt,
-                temperature=GEN_TEMPERATURE,
-                top_p=GEN_TOP_P,
-                max_tokens=GEN_MAX_TOKENS,
-                stop=["[USER]", "[SYSTEM]"],
-            )
-            content = resp["choices"][0]["text"]
+        with sem:
+            # Prefer chat completion if available
+            has_chat = hasattr(llm, "create_chat_completion")
+            if has_chat:
+                resp = llm.create_chat_completion(
+                    messages=[
+                        {"role": "system", "content": SEO_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=GEN_TEMPERATURE,
+                    top_p=GEN_TOP_P,
+                    max_tokens=GEN_MAX_TOKENS,
+                )
+                content = resp["choices"][0]["message"]["content"]
+            else:
+                # Fallback to plain completion
+                prompt = (
+                    f"[SYSTEM]\n{SEO_SYSTEM_PROMPT}\n\n"
+                    f"[USER]\n{user_prompt}\n\n"
+                    f"[ASSISTANT]\n"
+                )
+                resp = llm.create_completion(
+                    prompt=prompt,
+                    temperature=GEN_TEMPERATURE,
+                    top_p=GEN_TOP_P,
+                    max_tokens=GEN_MAX_TOKENS,
+                    stop=["[USER]", "[SYSTEM]"],
+                )
+                content = resp["choices"][0]["text"]
 
         parsed = parse_keywords_from_response(content)
         cleaned = dedup_and_cap_keywords(parsed, cap=MAX_KEYWORDS)
@@ -862,17 +870,28 @@ def ensure_llm_loaded(project_root: Optional[Path] = None):
     global _LLM_SINGLETON
     if _LLM_SINGLETON is not None:
         return _LLM_SINGLETON
-    try:
-        pr = project_root or discover_project_root()
-    except Exception:
-        pr = Path.cwd()
 
-    env_model = resolve_model_path_from_env(pr)
-    model_p = env_model or discover_model_path(pr)
-    if not model_p:
-        raise RuntimeError("No .gguf model found under project root or MODEL_DIR for AI keywords.")
-    _LLM_SINGLETON = load_model(str(model_p))
-    return _LLM_SINGLETON
+    # Initialize a module-global lock exactly once
+    lock = globals().get("_LLM_LOCK")
+    if lock is None:
+        import threading
+        lock = threading.Lock()
+        globals()["_LLM_LOCK"] = lock
+
+    with lock:
+        if _LLM_SINGLETON is not None:
+            return _LLM_SINGLETON
+        try:
+            pr = project_root or discover_project_root()
+        except Exception:
+            pr = Path.cwd()
+
+        env_model = resolve_model_path_from_env(pr)
+        model_p = env_model or discover_model_path(pr)
+        if not model_p:
+            raise RuntimeError("No .gguf model found under project root or MODEL_DIR for AI keywords.")
+        _LLM_SINGLETON = load_model(str(model_p))
+        return _LLM_SINGLETON
 
 def generate_keywords_for_title_api(title: str) -> List[str]:
     """

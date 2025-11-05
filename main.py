@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 import threading
+from fastapi.responses import StreamingResponse
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 HELPERS_DIR = PROJECT_ROOT / "Helpers"
@@ -131,19 +132,22 @@ def ensure_model_available() -> Dict[str, any]:
             status["model_present"] = True
             status["model_size_bytes"] = model_path.stat().st_size
             # Reset progress (already present)
-            download_progress.update({
-                "status": "idle",
-                "source": None,
-                "destination": str(model_path),
-                "total_bytes": status["model_size_bytes"],
-                "downloaded_bytes": status["model_size_bytes"],
-                "percent": 100.0,
-                "speed_bps": None,
-                "eta_seconds": 0.0,
-                "started_at": None,
-                "updated_at": time.time(),
-                "error": None,
-            })
+            try:
+                download_progress.update({
+                    "status": "idle",
+                    "source": None,
+                    "destination": str(model_path),
+                    "total_bytes": status["model_size_bytes"],
+                    "downloaded_bytes": status["model_size_bytes"],
+                    "percent": 100.0,
+                    "speed_bps": None,
+                    "eta_seconds": 0.0,
+                    "started_at": None,
+                    "updated_at": time.time(),
+                    "error": None,
+                })
+            except Exception:
+                pass
             return status
 
         if not model_url:
@@ -152,6 +156,13 @@ def ensure_model_available() -> Dict[str, any]:
 
         # Robust download with simple retry/backoff
         tmp_path = model_path.with_suffix(model_path.suffix + ".tmp")
+        # Pre-clean any stale temp file
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
         tries = 3
         last_err = None
         for i in range(1, tries + 1):
@@ -159,27 +170,34 @@ def ensure_model_available() -> Dict[str, any]:
                 # Ensure only one concurrent download attempt
                 with download_lock:
                     # Initialize progress
-                    download_progress.update({
-                        "status": "downloading",
-                        "source": model_url,
-                        "destination": str(model_path),
-                        "total_bytes": None,
-                        "downloaded_bytes": 0,
-                        "percent": None,
-                        "speed_bps": None,
-                        "eta_seconds": None,
-                        "started_at": time.time(),
-                        "updated_at": time.time(),
-                        "error": None,
-                    })
+                    try:
+                        download_progress.update({
+                            "status": "downloading",
+                            "source": model_url,
+                            "destination": str(model_path),
+                            "total_bytes": None,
+                            "downloaded_bytes": 0,
+                            "percent": None,
+                            "speed_bps": None,
+                            "eta_seconds": None,
+                            "started_at": time.time(),
+                            "updated_at": time.time(),
+                            "error": None,
+                        })
+                    except Exception:
+                        pass
                     last_logged_percent = -5.0
                     last_logged_time = time.time()
 
                     with requests.get(model_url, stream=True, timeout=600) as r:
                         r.raise_for_status()
+                        # Total size if known
                         total_hdr = r.headers.get("Content-Length")
                         total = int(total_hdr) if total_hdr and total_hdr.isdigit() else None
-                        download_progress["total_bytes"] = total
+                        try:
+                            download_progress["total_bytes"] = total
+                        except Exception:
+                            pass
 
                         hasher = None
                         if model_sha256:
@@ -204,13 +222,16 @@ def ensure_model_available() -> Dict[str, any]:
                                 percent = (downloaded / total * 100.0) if total else None
                                 eta = ((total - downloaded) / speed) if (total and speed > 0) else None
 
-                                download_progress.update({
-                                    "downloaded_bytes": downloaded,
-                                    "speed_bps": speed,
-                                    "percent": percent,
-                                    "eta_seconds": eta,
-                                    "updated_at": now,
-                                })
+                                try:
+                                    download_progress.update({
+                                        "downloaded_bytes": downloaded,
+                                        "speed_bps": speed,
+                                        "percent": percent,
+                                        "eta_seconds": eta,
+                                        "updated_at": now,
+                                    })
+                                except Exception:
+                                    pass
 
                                 # Periodic log every 5 seconds or +5% progress
                                 should_log = (now - last_logged_time >= 5.0) or (
@@ -219,7 +240,7 @@ def ensure_model_available() -> Dict[str, any]:
                                 if should_log:
                                     last_logged_time = now
                                     last_logged_percent = percent or last_logged_percent
-                                    if percent is not None:
+                                    if percent is not None and total is not None:
                                         print(f"[Download] {percent:.1f}% ({downloaded}/{total} bytes) "
                                               f"speed={speed/1e6:.2f} MB/s eta={int(eta or 0)}s", flush=True)
                                     else:
@@ -230,7 +251,10 @@ def ensure_model_available() -> Dict[str, any]:
                     if model_sha256:
                         digest = hasher.hexdigest() if hasher else ""
                         if digest.lower() != model_sha256.strip().lower():
-                            tmp_path.unlink(missing_ok=True)
+                            try:
+                                tmp_path.unlink(missing_ok=True)
+                            except Exception:
+                                pass
                             raise RuntimeError(f"SHA256 mismatch: expected {model_sha256}, got {digest}")
 
                     # Finalize
@@ -239,28 +263,35 @@ def ensure_model_available() -> Dict[str, any]:
                     status["model_present"] = True
                     status["model_size_bytes"] = model_path.stat().st_size
 
-                    download_progress.update({
-                        "status": "complete",
-                        "destination": str(model_path),
-                        "total_bytes": status["model_size_bytes"],
-                        "downloaded_bytes": status["model_size_bytes"],
-                        "percent": 100.0,
-                        "eta_seconds": 0.0,
-                        "updated_at": time.time(),
-                    })
+                    try:
+                        download_progress.update({
+                            "status": "complete",
+                            "destination": str(model_path),
+                            "total_bytes": status["model_size_bytes"],
+                            "downloaded_bytes": status["model_size_bytes"],
+                            "percent": 100.0,
+                            "eta_seconds": 0.0,
+                            "updated_at": time.time(),
+                        })
+                    except Exception:
+                        pass
                     return status
             except Exception as e:
                 last_err = e
+                # Clean tmp on failure
                 try:
                     tmp_path.unlink(missing_ok=True)
                 except Exception:
                     pass
                 backoff = 2 ** (i - 1)
-                download_progress.update({
-                    "status": "error",
-                    "error": str(e),
-                    "updated_at": time.time(),
-                })
+                try:
+                    download_progress.update({
+                        "status": "error",
+                        "error": str(e),
+                        "updated_at": time.time(),
+                    })
+                except Exception:
+                    pass
                 print(f"[Startup] Download attempt {i}/{tries} failed: {e}. Retrying in {backoff}s...", flush=True)
                 time.sleep(backoff)
 
@@ -273,7 +304,11 @@ def ensure_model_available() -> Dict[str, any]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     st = ensure_model_available()
-    print(f"[Startup] model_dir={st['model_dir']} model_present={st['model_present']} size={st['model_size_bytes']} downloaded={st['downloaded']} error={st['error']}", flush=True)
+    print(
+        f"[Startup] model_dir={st['model_dir']} model_present={st['model_present']} "
+        f"size={st['model_size_bytes']} downloaded={st['downloaded']} error={st['error']}",
+        flush=True,
+    )
     yield
 
 # Swap to lifespan (deprecates @app.on_event)
@@ -291,19 +326,18 @@ def ready() -> Dict:
         "download_attempted": st["downloaded"],
         "volume_mounted": st["volume_mounted"],
         "error": st["error"],
-        # Progress details
         "download_progress": {
-            "status": download_progress["status"],
-            "total_bytes": download_progress["total_bytes"],
-            "downloaded_bytes": download_progress["downloaded_bytes"],
-            "percent": download_progress["percent"],
-            "speed_bps": download_progress["speed_bps"],
-            "eta_seconds": download_progress["eta_seconds"],
-            "started_at": download_progress["started_at"],
-            "updated_at": download_progress["updated_at"],
-            "source": download_progress["source"],
-            "destination": download_progress["destination"],
-            "error": download_progress["error"],
+            "status": download_progress.get("status"),
+            "total_bytes": download_progress.get("total_bytes"),
+            "downloaded_bytes": download_progress.get("downloaded_bytes"),
+            "percent": download_progress.get("percent"),
+            "speed_bps": download_progress.get("speed_bps"),
+            "eta_seconds": download_progress.get("eta_seconds"),
+            "started_at": download_progress.get("started_at"),
+            "updated_at": download_progress.get("updated_at"),
+            "source": download_progress.get("source"),
+            "destination": download_progress.get("destination"),
+            "error": download_progress.get("error"),
         },
     }
 
@@ -370,7 +404,7 @@ def create_user_session_dirs(user_id: str, keyword_slug: str, desired_total: Opt
         "session_folder_name": session_folder_name,
     }
 
-def start_queue_consumer_thread(queue_path: str, run_root_dir: str, outputs_dir: str, popular_listings_path: Optional[str] = None) -> "threading.Thread":
+def start_queue_consumer_thread(queue_path: str, run_root_dir: str, outputs_dir: str, popular_listings_path: Optional[str] = None, progress_cb: Optional[callable] = None) -> "threading.Thread":
     """
     Start a background thread to consume the real-time popular queue and
     process listings one-by-one. Returns the thread handle.
@@ -381,7 +415,7 @@ def start_queue_consumer_thread(queue_path: str, run_root_dir: str, outputs_dir:
 
     t = threading.Thread(
         target=dem.consume_popular_queue,
-        args=(Path(queue_path), Path(run_root_dir), Path(outputs_dir), 0.5, Path(popular_listings_path) if popular_listings_path else None),
+        args=(Path(queue_path), Path(run_root_dir), Path(outputs_dir), 0.5, Path(popular_listings_path) if popular_listings_path else None, progress_cb),
         daemon=True,
         name=f"popular-queue-consumer-{Path(run_root_dir).name}",
     )
@@ -900,6 +934,15 @@ def build_megafile_from_outputs(outputs_dir: str, second_step_summary_path: str,
                 clean.append(entry)
         ev_map[li] = clean
 
+    # NEW: explicit counts (includes zero)
+    processed_total = sum(
+        1 for it in listings
+        if isinstance(it, dict) and it.get("demand") not in (None, "", False)
+    )
+    popular_count = summary_obj.get("count")
+    if not isinstance(popular_count, int):
+        popular_count = len(listings)
+
     entries = []
     for it in listings:
         lid = it.get("listing_id") or it.get("listingId")
@@ -912,11 +955,10 @@ def build_megafile_from_outputs(outputs_dir: str, second_step_summary_path: str,
             title = html_lib.unescape(title) if isinstance(title, str) else title
         except Exception:
             pass
-
         entry = {
             "listing_id": li,
             "title": title,
-            "popular_info": it,  # full per-listing object from the summary
+            "popular_info": it,
             "signals": None,
             "demand_value": it.get("demand"),
             "keywords": ai_map.get(li, []),
@@ -938,12 +980,20 @@ def build_megafile_from_outputs(outputs_dir: str, second_step_summary_path: str,
         entries.append(entry)
 
     megafile_path = Path(outputs_dir) / f"megafile_listings_{slug}.json"
-    write_json_file(str(megafile_path), {"entries": entries})
+    # Write entries plus meta counts — includes processed_total=0 explicitly
+    write_json_file(str(megafile_path), {
+        "entries": entries,
+        "meta": {
+            "processed_total": processed_total,
+            "popular_count": popular_count,
+            "keyword_slug": slug,
+        },
+    })
     return str(megafile_path)
 
 # ---------- Core Orchestration ----------
 
-def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = None) -> Dict:
+def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = None, progress_cb: Optional[callable] = None) -> Dict:
     """
     Orchestrate the full pipeline with precise scoping:
     - Etsy v3 aggregated search
@@ -964,6 +1014,17 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
     search_json = etsy.fetch_listings_aggregated(keyword, desired_total)
     fetched_total = len(search_json.get("results") or [])
     print(f"[Run] Aggregated search fetched {fetched_total} listings.")
+    try:
+        if progress_cb:
+            progress_cb({
+                "stage": "search",
+                "user_id": user_id,
+                "remaining": 0,
+                "total": fetched_total,
+                "message": f"Aggregated search fetched {fetched_total}",
+            })
+    except Exception:
+        pass
 
     # Run directories (global outputs)
     timestamp = time.strftime("%Y%m%d_%H%M%S")
@@ -975,113 +1036,95 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
     ensure_dir(outputs_dir)
 
     # Persist search results
-    search_results_path = os.path.join(outputs_dir, "search_results.json")
-    write_json_file(search_results_path, search_json)
+    try:
+        search_path = os.path.join(outputs_dir, "search_results.json")
+        write_json_file(search_path, search_json)
+    except Exception:
+        pass
 
-    # Extract listing IDs (search scope, not necessarily popular)
+    # Listing IDs + queue init
     listing_ids = etsy.extract_listing_ids(search_json)
-    if not listing_ids:
-        raise RuntimeError("No listing IDs found in search results.")
-    if desired_total is not None and desired_total < len(listing_ids):
-        listing_ids = listing_ids[:desired_total]
-
-    # Save IDs
-    ids_txt_path = os.path.join(helpers_dir, f"listing_ids_{slug}.txt")
-    ids_json_path = os.path.join(outputs_dir, f"listing_ids_{slug}.json")
-    etsy.write_text(ids_txt_path, "\n".join(str(x) for x in listing_ids))
-    write_json_file(ids_json_path, {"listing_ids": listing_ids})
-
-    # Real-time popular listings file and queue file
     popular_listings_path = os.path.join(outputs_dir, f"popular_now_listings_{slug}.json")
     popular_queue_path = os.path.join(outputs_dir, f"popular_queue_{slug}.json")
+    queue_initialized = False
+    try:
+        etsy.init_popular_queue(popular_queue_path, user_id, slug, desired_total)
+        queue_initialized = True
+    except Exception as e:
+        print(f"[Run] WARN: init queue failed: {e}")
 
-    # Start keywords + Everbee right away; they watch the popular file in realtime
-    keywords_t = start_keywords_and_everbee_thread(popular_listings_path, outputs_dir, slug, queue_path=popular_queue_path)
-
-    # Execute listingCards cURL in multi-part requests
-    # IMPORTANT: Do NOT enqueue here; only update realtime popular JSON.
-    print("[Run] Executing listingCards cURL in chunks (no queue writes) and updating realtime popular ...")
-    combined_obj = etsy.run_listingcards_curl_for_ids(
+    # Execute listingCards cURL in chunks; emit splitting progress
+    result = etsy.run_listingcards_curl_for_ids(
         slug,
         listing_ids,
         helpers_dir,
         outputs_dir,
-        queue_path=None,  # disable queue writes here to avoid non-popular enqueues
-        queue_user_id=None,
+        queue_path=popular_queue_path if queue_initialized else None,
+        queue_user_id=user_id,
         popular_listings_path=popular_listings_path,
         search_json=search_json,
+        progress_path=None,
+        progress_cb=progress_cb,
     )
+    popular_ids_dedup = list(dict.fromkeys(result.get("popular_now_ids") or []))
+    total_popular = len(popular_ids_dedup)
 
-    # Cross-reference Popular Now IDs (final consolidation)
-    popular_ids = combined_obj.get("popular_now_ids") or []
-    # dedupe before final writes
-    popular_ids_dedup = list(dict.fromkeys(int(x) for x in popular_ids))
-    popular_listings = etsy.cross_reference_popular(search_json, popular_ids_dedup)
-
-    # Write final popular listings file
-    write_json_file(popular_listings_path, {
-        "count": len(popular_ids_dedup),
-        "popular_now_ids": popular_ids_dedup,
-        "listings": popular_listings,
-    })
-    popular_ids_path = os.path.join(outputs_dir, f"popular_now_ids_{slug}.json")
-    write_json_file(popular_ids_path, {"popular_now_ids": popular_ids_dedup})
-
-    # Initialize the queue cleanly and append ONLY final popular IDs
-    queue_initialized = False
+    # Emit initial AI/keywords totals
     try:
-        # Initialize the queue cleanly and append ONLY final popular IDs
-        etsy.init_popular_queue(popular_queue_path, user_id, slug, desired_total)
-        if popular_ids_dedup:
-            etsy.append_to_popular_queue(popular_queue_path, popular_ids_dedup, 0, user_id)
-        else:
-            print("[Run] WARNING: No popular IDs found; demand consumer will have nothing to process.")
+        if progress_cb:
+            progress_cb({
+                "stage": "ai_keywords",
+                "user_id": user_id,
+                "remaining": total_popular,
+                "total": total_popular,
+                "message": "AI keywords initialized",
+            })
+            progress_cb({
+                "stage": "keywords_research",
+                "user_id": user_id,
+                "remaining": total_popular,
+                "total": total_popular,
+                "message": "Keywords research initialized",
+            })
+    except Exception:
+        pass
 
-        # FINALIZE THE QUEUE NOW so consumers can exit once work is done
+    # Start AI/Everbee worker immediately
+    keywords_t = start_keywords_and_everbee_thread(popular_listings_path, outputs_dir, slug, queue_path=popular_queue_path, progress_cb=progress_cb, total_target=total_popular, user_id=user_id)
+
+    try:
+        # Once listingCards is done, finalize queue status so consumer can exit when done
+        etsy.finalize_popular_queue(popular_queue_path, user_id, destroy=False)
+    except Exception as e:
+        print(f"[Run] WARN: finalize queue failed: {e}")
+
+    # Start demand consumer (filtered to only popular file), and artifact processor restricted to those IDs
+    consumer_t = start_queue_consumer_thread(popular_queue_path, run_root_dir, outputs_dir, popular_listings_path=popular_listings_path, progress_cb=progress_cb)
+    processor_t = start_artifact_processor_thread(popular_queue_path, run_root_dir, outputs_dir, popular_ids_dedup, slug)
+
+    # Wait for threads (block until completion)
+    try:
+        consumer_t.join()
+    except Exception:
+        print("[Run] WARN: demand consumer thread join failed.")
+
+    try:
+        processor_t.join()
+    except Exception:
+        print("[Run] WARN: artifact processor thread join failed.")
+
+    # Ensure keywords/Everbee worker has finished so its results are in the megafile
+    try:
+        keywords_t.join()
+    except Exception:
+        print("[Run] WARN: keywords/everbee thread join failed.")
+
+    # Guarantee queue gets finalized even on exceptions
+    if queue_initialized:
         try:
             etsy.finalize_popular_queue(popular_queue_path, user_id, destroy=False)
         except Exception as e:
-            print(f"[Run] WARN: finalize queue failed: {e}")
-
-        # Start demand consumer (filtered to only popular file), and artifact processor restricted to those IDs
-        consumer_t = start_queue_consumer_thread(popular_queue_path, run_root_dir, outputs_dir, popular_listings_path=popular_listings_path)
-        processor_t = start_artifact_processor_thread(popular_queue_path, run_root_dir, outputs_dir, popular_ids_dedup, slug)
-
-        # Wait for threads (block until completion)
-        try:
-            consumer_t.join()
-        except Exception:
-            print("[Run] WARN: demand consumer thread join failed.")
-
-        try:
-            processor_t.join()
-        except Exception:
-            print("[Run] WARN: artifact processor thread join failed.")
-
-        # Ensure keywords/Everbee worker has finished so its results are in the megafile
-        try:
-            keywords_t.join()
-        except Exception:
-            print("[Run] WARN: keywords/everbee thread join failed.")
-
-        try:
-            processor_t.join()
-        except Exception:
-            print("[Run] WARN: artifact processor thread join failed.")
-
-        # Ensure keywords/Everbee worker has finished so its results are in the megafile
-        try:
-            keywords_t.join()
-        except Exception:
-            print("[Run] WARN: keywords/everbee thread join failed.")
-
-    finally:
-        # Guarantee queue gets finalized even on exceptions
-        if queue_initialized:
-            try:
-                etsy.finalize_popular_queue(popular_queue_path, user_id, destroy=False)
-            except Exception as e:
-                print(f"[Run] WARN: finalize queue in finally failed: {e}")
+            print(f"[Run] WARN: finalize queue in finally failed: {e}")
 
     # NEW: Abort run if demand extractor signaled fatal cart residual error
     fatal_path = os.path.join(outputs_dir, "fatal_cart_residual_error.json")
@@ -1116,40 +1159,36 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
     # Megafile consolidated from summary + AI + Everbee
     megafile_path = build_megafile_from_outputs(outputs_dir, second_step_summary_path, slug)
 
-    # Create per-user session folder and run log
+    # Emit completion event with megafile path
+    try:
+        if progress_cb:
+            progress_cb({
+                "stage": "complete",
+                "user_id": user_id,
+                "remaining": 0,
+                "total": total_popular,
+                "message": "Run complete",
+                "megafile_path": megafile_path,
+            })
+    except Exception:
+        pass
+
+    # Write per-user session log
     session_paths = create_user_session_dirs(user_id, slug, desired_total, fetched_total)
     run_log = {
         "success": True,
         "user_id": user_id,
         "keyword": keyword,
-        "keyword_slug": slug,
         "desired_total": desired_total,
-        "fetched_total": fetched_total,
-        "popular_now_ids_count": len(popular_ids_dedup),
-        "popular_now_ids": popular_ids_dedup,
-        "outputs": {
-            "run_root_dir": run_root_dir,
-            "search_results_path": search_results_path,
-            "ids_txt_path": ids_txt_path,
-            "ids_json_path": ids_json_path,
-            "popular_listings_path": popular_listings_path,
-            "popular_ids_path": popular_ids_path,
-            "second_step_summary_dir": os.path.join(run_root_dir, "second_step_done_demand_extraction"),
-            "second_step_summary_path": second_step_summary_path,
-            "megafile_path": megafile_path,
-        },
-        "curl_template_used": combined_obj.get("curl_original_path"),
-        "session": {
-            "users_root": session_paths["users_root"],
-            "user_dir": session_paths["user_dir"],
-            "sessions_dir": session_paths["sessions_dir"],
-            "session_root_dir": session_paths["session_root_dir"],
-            "session_folder_name": session_paths["session_folder_name"],
-        },
         "timing": {
             "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(start_ts)),
             "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time())),
             "duration_seconds": round(time.time() - start_ts, 3),
+        },
+        "meta": {
+            "megafile_path": megafile_path,
+            "run_root_dir": run_root_dir,
+            "keyword_slug": slug,
         },
     }
     write_json_file(session_paths["run_log_path"], run_log)
@@ -1168,7 +1207,7 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
         },
     }
 
-def start_keywords_and_everbee_thread(popular_listings_path: str, outputs_dir: str, slug: str, queue_path: Optional[str] = None) -> "threading.Thread":
+def start_keywords_and_everbee_thread(popular_listings_path: str, outputs_dir: str, slug: str, queue_path: Optional[str] = None, progress_cb: Optional[callable] = None, total_target: int = 0, user_id: Optional[str] = None) -> "threading.Thread":
     """
     Spawn background thread that:
     - Watches realtime popular listings JSON for new titles
@@ -1179,14 +1218,14 @@ def start_keywords_and_everbee_thread(popular_listings_path: str, outputs_dir: s
     import threading
     t = threading.Thread(
         target=keywords_and_everbee_stream_worker,
-        args=(popular_listings_path, outputs_dir, slug, queue_path),
+        args=(popular_listings_path, outputs_dir, slug, queue_path, progress_cb, total_target, user_id),
         daemon=True,
         name=f"keywords-everbee-{slug}",
     )
     t.start()
     return t
 
-def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: str, slug: str, queue_path: Optional[str]) -> None:
+def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: str, slug: str, queue_path: Optional[str], progress_cb: Optional[callable] = None, total_target: int = 0, user_id: Optional[str] = None) -> None:
     from pathlib import Path
     import json
     import time
@@ -1218,6 +1257,8 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
         base_url, headers = None, None
 
     processed_ids: set[int] = set()
+    ai_completed_ids: set[int] = set()
+    ev_completed_ids: set[int] = set()
     futures = []
     executor = ThreadPoolExecutor(max_workers=4)
     out_lock = threading.Lock()
@@ -1284,6 +1325,20 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
         except Exception:
             return set()
 
+    def _emit(stage: str, done_ids: set[int], total: int, msg: str):
+        try:
+            if progress_cb:
+                remaining = max(0, total - len(done_ids))
+                progress_cb({
+                    "stage": stage,
+                    "user_id": user_id or "n/a",
+                    "remaining": remaining,
+                    "total": total,
+                    "message": msg,
+                })
+        except Exception:
+            pass
+
     def _append_ai(listing_id: int, title: str, keywords: list[str]) -> None:
         with out_lock:
             try:
@@ -1297,6 +1352,9 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
             else:
                 doc["listings"][idx] = entry
             write_json_file(str(ai_out), doc)
+        # mark completed and emit progress
+        ai_completed_ids.add(listing_id)
+        _emit("ai_keywords", ai_completed_ids, total_target, f"AI keywords saved for listing_id={listing_id}")
 
     def _append_ev(listing_id: int, title: str, result: dict) -> None:
         with out_lock:
@@ -1322,6 +1380,10 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
                 lst.append(clean)
                 doc["listings"][idx]["results"] = lst
             write_json_file(str(ev_out), doc)
+        # mark completed (first metric) and emit progress
+        if listing_id not in ev_completed_ids:
+            ev_completed_ids.add(listing_id)
+            _emit("keywords_research", ev_completed_ids, total_target, f"Everbee metrics saved for listing_id={listing_id}")
 
     def _everbee_submit(listing_id: int, title: str, keyword: str):
         if not base_url or not headers:
@@ -1335,6 +1397,10 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
         futures.append(executor.submit(run_one))
 
     print(f"[KeywordsEverbee] START popular='{popular_listings_path}' -> ai='{ai_out.name}' ev='{ev_out.name}'")
+    # emit initial totals
+    _emit("ai_keywords", ai_completed_ids, total_target, "AI keywords started")
+    _emit("keywords_research", ev_completed_ids, total_target, "Keywords research started")
+
     while True:
         # Keep a fresh popular-title map for fallback titles
         pop_items = _read_popular_listings()
@@ -1359,62 +1425,181 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
             if llm and has_title:
                 try:
                     kws, _raw = ai.generate_keywords_for_title(llm, title.strip())
-                    kws = ai.dedup_and_cap_keywords(kws, cap=ai.MAX_KEYWORDS)
-                except Exception as e:
-                    print(f"[KeywordsEverbee] WARN: AI generation failed for listing_id={listing_id}: {e}")
+                except Exception:
                     kws = []
-            _append_ai(listing_id, title, kws)
-            for kw in kws:
-                _everbee_submit(listing_id, title, kw)
-            if has_title:
-                processed_ids.add(listing_id)
-
-        # Also process all popular listings to ensure titles-based coverage
-        for it in pop_items:
-            lid = it.get("listing_id") or it.get("listingId")
-            title = it.get("title") or ""
-            try:
-                listing_id = int(str(lid))
-            except Exception:
-                continue
-            if listing_id in processed_ids:
-                continue
-            kws = []
-            has_title = isinstance(title, str) and title.strip() != ""
-            if llm and has_title:
-                try:
-                    kws, _raw = ai.generate_keywords_for_title(llm, title.strip())
-                    kws = ai.dedup_and_cap_keywords(kws, cap=ai.MAX_KEYWORDS)
-                except Exception as e:
-                    print(f"[KeywordsEverbee] WARN: AI generation failed for listing_id={listing_id}: {e}")
-                    kws = []
-            _append_ai(listing_id, title, kws)
-            for kw in kws:
-                _everbee_submit(listing_id, title, kw)
+            _append_ai(listing_id, title.strip(), [str(x) for x in kws if isinstance(x, str)])
+            # Submit Everbee for each keyword (can be empty; will still emit a result if response comes back)
+            for kw in ([title.strip()] + list(kws)):
+                if isinstance(kw, str) and kw.strip():
+                    _everbee_submit(listing_id, title.strip(), kw.strip())
             processed_ids.add(listing_id)
 
-        queue_completed = False
+        # If we have a fixed total target, emit a heartbeat with remaining counts
+        _emit("ai_keywords", ai_completed_ids, total_target, "AI keywords heartbeat")
+        _emit("keywords_research", ev_completed_ids, total_target, "Keywords research heartbeat")
+
+        # Exit when queue is completed and all futures done and expected processed
         try:
-            if queue_path and os.path.exists(queue_path):
-                obj = json.load(open(queue_path, "r", encoding="utf-8"))
-                queue_completed = str(obj.get("status", "")).lower() == "completed"
+            obj = json.load(open(queue_path, "r", encoding="utf-8")) if queue_path and os.path.exists(queue_path) else None
+            status = obj.get("status") if isinstance(obj, dict) else None
+            expected_ids = _read_popular_ids()
+            all_futures_done = all(f.done() for f in futures) if futures else True
+            all_processed_expected = True if not expected_ids else all(li in processed_ids for li in expected_ids)
+            if status == "completed" and all_futures_done and all_processed_expected:
+                _emit("ai_keywords", ai_completed_ids, total_target, "AI keywords completed")
+                _emit("keywords_research", ev_completed_ids, total_target, "Keywords research completed")
+                break
         except Exception:
-            queue_completed = False
+            pass
 
-        expected_ids = _read_popular_ids()
-        all_futures_done = all(f.done() for f in futures) if futures else True
-        all_processed_expected = expected_ids.issubset(processed_ids) if expected_ids else False
-
-        if queue_completed and all_futures_done and all_processed_expected:
-            break
-        time.sleep(1)
-    executor.shutdown(wait=True)    
+        time.sleep(0.5)
 
 # ---------- Endpoints ----------
+
+from fastapi.responses import StreamingResponse
+
+@app.post("/run/stream")
+def run_stream(payload: RunRequest):
+    import threading, queue, json, time
+
+    if not payload.user_id.strip():
+        return {"success": False, "error": "user_id is required"}
+    if not payload.keyword.strip():
+        return {"success": False, "error": "keyword is required"}
+
+    # Serialize full workflow execution inside a single process
+    sem = globals().get("_RUN_SEMAPHORE")
+    if sem is None:
+        import threading as _t, os
+        sem = _t.Semaphore(int(os.getenv("RUN_CONCURRENCY", "2")))
+        globals()["_RUN_SEMAPHORE"] = sem
+
+    ev_q: "queue.Queue[dict]" = queue.Queue()
+
+    def emit(ev: dict):
+        try:
+            # tag every event with user_id for frontend routing
+            ev.setdefault("user_id", payload.user_id.strip())
+            ev_q.put(ev)
+        except Exception:
+            pass
+
+    def worker():
+        try:
+            with sem:
+                res = orchestrate_run(payload.user_id.strip(), payload.keyword.strip(), payload.desired_total, progress_cb=emit)
+            # Attach full megafile JSON to the completion event
+            megafile_json = None
+            try:
+                mp = (res.get("meta") or {}).get("megafile_path")
+                if mp:
+                    with open(mp, "r", encoding="utf-8") as f:
+                        megafile_json = json.load(f)
+            except Exception as e:
+                megafile_json = {"error": f"Failed to load megafile: {str(e)}"}
+            emit({"type": "complete", "success": res.get("success"), "result": res, "megafile": megafile_json})
+        except Exception as e:
+            emit({"type": "error", "error": str(e)})
+
+    threading.Thread(target=worker, daemon=True, name=f"run-stream-{payload.user_id.strip()}").start()
+
+    def sse_iter():
+        # Initial event for UI bootstrap
+        start_ev = {
+            "type": "start",
+            "user_id": payload.user_id.strip(),
+            "stage": "start",
+            "message": f"Run started for keyword='{payload.keyword.strip()}'",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        }
+        yield f"data: {json.dumps(start_ev)}\n\n"
+        last_keepalive = time.time()
+        while True:
+            try:
+                ev = ev_q.get(timeout=0.5)
+                ev["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                yield f"data: {json.dumps(ev)}\n\n"
+                if ev.get("type") in ("complete", "error"):
+                    break
+            except queue.Empty:
+                # periodic keepalive comments (SSE)
+                now = time.time()
+                if now - last_keepalive >= 5.0:
+                    last_keepalive = now
+                    yield f": keepalive {int(now)}\n\n"
+
+    return StreamingResponse(sse_iter(), media_type="text/event-stream")
 
 @app.get("/health")
 def health() -> Dict:
     return {"success": True, "status": "ok"}
+
+# New: non-blocking job submission
+@app.post("/enqueue")
+def enqueue(payload: RunRequest) -> Dict:
+    if not payload.user_id.strip():
+        return {"success": False, "error": "user_id is required"}
+    if not payload.keyword.strip():
+        return {"success": False, "error": "keyword is required"}
+
+    import uuid, time, os
+    from typing import Dict as _Dict
+    from concurrent.futures import ThreadPoolExecutor
+
+    jobs: _Dict[str, dict] = globals().setdefault("_JOBS", {})
+    executor: ThreadPoolExecutor = globals().get("_JOB_EXECUTOR")
+    if executor is None:
+        executor = ThreadPoolExecutor(max_workers=int(os.getenv("JOB_WORKERS", "2")))
+        globals()["_JOB_EXECUTOR"] = executor
+
+    sem = globals().get("_RUN_SEMAPHORE")
+    if sem is None:
+        import threading
+        sem = threading.Semaphore(int(os.getenv("RUN_CONCURRENCY", "2")))
+        globals()["_RUN_SEMAPHORE"] = sem
+
+    job_id = str(uuid.uuid4())
+    jobs[job_id] = {
+        "status": "queued",
+        "user_id": payload.user_id.strip(),
+        "keyword": payload.keyword.strip(),
+        "desired_total": payload.desired_total,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "started_at": None,
+        "finished_at": None,
+        "result": None,
+        "error": None,
+    }
+
+    def _run_job():
+        jobs[job_id]["status"] = "running"
+        jobs[job_id]["started_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        try:
+            with sem:
+                res = orchestrate_run(
+                    jobs[job_id]["user_id"],
+                    jobs[job_id]["keyword"],
+                    jobs[job_id]["desired_total"],
+                )
+            jobs[job_id]["result"] = res
+            jobs[job_id]["status"] = "completed" if (isinstance(res, dict) and res.get("success")) else "failed"
+        except Exception as e:
+            jobs[job_id]["error"] = str(e)
+            jobs[job_id]["status"] = "failed"
+        finally:
+            jobs[job_id]["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+
+    executor.submit(_run_job)
+    return {"success": True, "job_id": job_id}
+
+# New: job status
+@app.get("/jobs/{job_id}")
+def job_status(job_id: str) -> Dict:
+    jobs = globals().get("_JOBS") or {}
+    j = jobs.get(job_id)
+    if not j:
+        return {"success": False, "error": "job not found"}
+    return {"success": True, "job": j}
 
 @app.post("/run")
 def run(payload: RunRequest) -> Dict:
@@ -1424,7 +1609,15 @@ def run(payload: RunRequest) -> Dict:
         if not payload.keyword.strip():
             return {"success": False, "error": "keyword is required"}
 
-        result = orchestrate_run(payload.user_id.strip(), payload.keyword.strip(), payload.desired_total)
+        # Serialize full workflow execution inside a single process
+        sem = globals().get("_RUN_SEMAPHORE")
+        if sem is None:
+            import threading, os
+            sem = threading.Semaphore(int(os.getenv("RUN_CONCURRENCY", "2")))
+            globals()["_RUN_SEMAPHORE"] = sem
+
+        with sem:
+            result = orchestrate_run(payload.user_id.strip(), payload.keyword.strip(), payload.desired_total)
 
         # On 100% success, return the full megafile JSON content
         if isinstance(result, dict) and result.get("success") is True:
@@ -1434,7 +1627,16 @@ def run(payload: RunRequest) -> Dict:
                 if not megafile_path:
                     return {"success": False, "error": "megafile_path missing from result"}
                 with open(megafile_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    doc = json.load(f)
+                # NEW: ensure zero-case is explicit if meta missing
+                entries = doc.get("entries") or []
+                meta = doc.get("meta") or {}
+                if "processed_total" not in meta:
+                    meta["processed_total"] = len([e for e in entries if e.get("demand_value") not in (None, "", False)])
+                if "popular_count" not in meta:
+                    meta["popular_count"] = len(entries)
+                doc["meta"] = meta
+                return doc
             except Exception as e:
                 return {"success": False, "error": f"Failed to load megafile: {e}"}
 

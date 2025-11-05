@@ -1230,7 +1230,7 @@ def finalize_second_queue(second_queue_path: Path, total_count: int, destroy: bo
         except Exception:
             pass
 
-def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, poll_interval: float = 0.5, popular_listings_path: Optional[Path] = None) -> None:
+def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, poll_interval: float = 0.5, popular_listings_path: Optional[Path] = None, progress_cb: Optional[callable] = None) -> None:
     """
     Consume the real-time Popular Products Queue and process listings one-by-one
     as soon as they appear. Continues until the queue is marked completed and
@@ -1311,13 +1311,18 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                 # Fast-complete when source queue is completed and nothing remains
                 if status == "completed" and remaining_before == 0:
                     finalize_second_queue(second_queue_path, total_count=len(processed), destroy=True)
-                    print(
-                        f"Second Etsy Demand Extractor Queue COMPLETED\n"
-                        f"  user: {user_label}\n"
-                        f"  processed_total: {len(processed)}\n"
-                        f"  destroyed_queue_path: {second_queue_path}"
-                    )
-                    break
+                    # Emit final demand extraction progress (0 remaining)
+                    try:
+                        if progress_cb:
+                            progress_cb({
+                                "stage": "demand_extraction",
+                                "user_id": user_label,
+                                "remaining": 0,
+                                "total": total_in_source,
+                                "message": "Demand extraction completed",
+                            })
+                    except Exception:
+                        pass
 
                 print(
                     f"Second Etsy Demand Extractor Queue OBSERVE\n"
@@ -1326,6 +1331,19 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                     f"  remaining_before: {remaining_before}\n"
                     f"  processed_total: {len(processed)}"
                 )
+
+                # Emit observe demand extraction snapshot
+                try:
+                    if progress_cb:
+                        progress_cb({
+                            "stage": "demand_extraction",
+                            "user_id": user_label,
+                            "remaining": remaining_before,
+                            "total": total_in_source,
+                            "message": "Demand extraction observing queue",
+                        })
+                except Exception:
+                    pass
 
                 for it in items:
                     lid = it.get("listing_id")
@@ -1345,6 +1363,24 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                         )
                         processed.add(lid_i)
                         write_file_text(processed_log, json.dumps({"processed_ids": sorted(list(processed))}, ensure_ascii=False, indent=2))
+                        # Emit progress after skip
+                        try:
+                            if progress_cb:
+                                rem = sum(
+                                    1 for jt in items
+                                    if isinstance(jt, dict)
+                                    and str(jt.get("listing_id", "")).isdigit()
+                                    and int(str(jt.get("listing_id"))) not in processed
+                                )
+                                progress_cb({
+                                    "stage": "demand_extraction",
+                                    "user_id": user_label,
+                                    "remaining": rem,
+                                    "total": total_in_source,
+                                    "message": f"Skipped non-popular listing_id={lid_i}",
+                                })
+                        except Exception:
+                            pass
                         continue
 
                     print(
@@ -1392,6 +1428,19 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                             and int(str(jt.get("listing_id"))) not in processed
                         )
 
+                        # Emit demand extraction progress after each processed listing
+                        try:
+                            if progress_cb:
+                                progress_cb({
+                                    "stage": "demand_extraction",
+                                    "user_id": user_label,
+                                    "remaining": remaining_after,
+                                    "total": total_in_source,
+                                    "message": f"Processed listing_id={lid_i} demand_value={demand_value}",
+                                })
+                        except Exception:
+                            pass
+
                         print(
                             f"Second Etsy Demand Extractor Queue DONE\n"
                             f"  user: {user_label}\n"
@@ -1431,6 +1480,18 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                             continue
                     if all_ids and all(lid in processed for lid in all_ids):
                         finalize_second_queue(second_queue_path, total_count=len(processed), destroy=True)
+                        # Emit final completion
+                        try:
+                            if progress_cb:
+                                progress_cb({
+                                    "stage": "demand_extraction",
+                                    "user_id": user_label,
+                                    "remaining": 0,
+                                    "total": total_in_source,
+                                    "message": "Demand extraction completed",
+                                })
+                        except Exception:
+                            pass
                         print(
                             f"Second Etsy Demand Extractor Queue COMPLETED\n"
                             f"  user: {user_label}\n"
@@ -1438,25 +1499,9 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                             f"  destroyed_queue_path: {second_queue_path}"
                         )
                         break
-            else:
-                # Source queue removed: finalize and exit to avoid spinning forever
-                finalize_second_queue(second_queue_path, total_count=len(processed), destroy=True)
-                print(
-                    f"Second Etsy Demand Extractor Queue COMPLETED (source removed)\n"
-                    f"  user: {user_label}\n"
-                    f"  processed_total: {len(processed)}\n"
-                    f"  destroyed_queue_path: {second_queue_path}"
-                )
-                break
-        except Exception as e:
-            print(
-                f"Second Etsy Demand Extractor Queue LOOP ERROR\n"
-                f"  user: {user_label}\n"
-                f"  error: {e}"
-            )
             time.sleep(poll_interval)
-
-        time.sleep(poll_interval)
+        except Exception:
+            time.sleep(poll_interval)
 
 def find_group_numbers(txt_root: Path) -> List[int]:
     required = {"gettingcart.txt", "listing.txt", "removingcart.txt"}
@@ -1964,21 +2009,85 @@ def parse_listing_json_and_extract(stdout: str, out_dir: Path) -> Tuple[Optional
 def run_listing_post_remove_check(listing_txt_path: Path, out_dir: Path) -> Tuple[int, str, str]:
     original = read_file_text(listing_txt_path)
     write_file_text(out_dir / "verify_post_remove_listing_original.txt", original)
-    rc, stdout, stderr = run_shell_command(original, timeout=120)
+
+    # NEW: inject cookie jar so verification uses the same session (post-remove)
+    cmd_jar = inject_cookie_jar(original, jar_path, read=True, write=True)
+    write_file_text(out_dir / "verify_post_remove_listing_sent_with_cookiejar.txt", cmd_jar)
+
+    rc, stdout, stderr = run_shell_command(cmd_jar, timeout=120)
     write_file_text(out_dir / "verify_post_remove_listing_stdout.json", stdout)
     write_file_text(out_dir / "verify_post_remove_listing_stderr.txt", stderr if stderr else "")
     write_file_text(out_dir / "verify_post_remove_listing_exitcode.txt", str(rc))
     return rc, stdout, stderr
 
-def verify_cart_empty_post_removal(listing_txt_path: Path, listing_id: int, out_dir: Path) -> bool:
-    rc, stdout, _ = run_listing_post_remove_check(listing_txt_path, out_dir)
+def _is_listing_in_cart_from_listing_stdout(stdout: str, listing_id: int) -> bool:
+    try:
+        obj = json.loads(stdout)
+    except Exception:
+        try:
+            m = re.search(r"\{.*\}", stdout, flags=re.DOTALL)
+            obj = json.loads(m.group(0)) if m else None
+        except Exception:
+            obj = None
+
+    if not isinstance(obj, dict):
+        return False
+
+    def listing_in_cart(container: dict) -> bool:
+        if not isinstance(container, dict):
+            return False
+        for key in ("cart_listings", "line_items", "items"):
+            arr = container.get(key)
+            if isinstance(arr, list):
+                for it in arr:
+                    if isinstance(it, dict):
+                        lid = it.get("listing_id") or it.get("listingId") or it.get("listing")
+                        try:
+                            lid_i = int(str(lid)) if lid is not None else None
+                        except Exception:
+                            lid_i = None
+                        if lid_i == int(listing_id):
+                            return True
+        return False
+
+    # Check top-level first
+    if listing_in_cart(obj):
+        return True
+
+    # Then common nested containers
+    for ckey in ("cart", "data", "payload", "event_payload", "response", "meta"):
+        cont = obj.get(ckey)
+        if listing_in_cart(cont):
+            return True
+
+    return False
+
+def verify_cart_empty_post_removal(listing_txt_path: Path, listing_id: int, out_dir: Path, jar_path: Path = DEFAULT_COOKIE_JAR) -> bool:
+    # Prefer authoritative cart-list check; fall back to listing JSON only if cart_id missing
+    cart_id: Optional[int] = None
+    for p in (out_dir / "cart_id_from_gettingcart.txt", out_dir / "cart_id_from_listing_json.txt"):
+        try:
+            s = read_file_text(p).strip()
+            if s.isdigit():
+                cart_id = int(s)
+                break
+        except Exception:
+            continue
+
+    if isinstance(cart_id, int) and cart_id > 0:
+        inv = fetch_inventory_id_from_cart_list(cart_id, int(listing_id), jar_path, out_dir)
+        # If the listing’s inventory is found in the cart, removal failed
+        return not (isinstance(inv, int) and inv > 0)
+
+    # Fallback: replay listing curl under the same session and check cart_listings
+    rc, stdout, _ = run_listing_post_remove_check(listing_txt_path, out_dir, jar_path)
     if rc != 0:
         # Non-zero curl exit does not prove removal; record and treat as failure
         write_file_text(out_dir / "verify_post_remove_error.txt", f"listing curl exit {rc}")
         return False
-    # If inventory id for this listing is still present, product remains in cart
-    iid = extract_inventory_id_from_listing_stdout(stdout, int(listing_id), out_dir)
-    return not (isinstance(iid, int) and iid > 0)
+
+    present_in_cart = _is_listing_in_cart_from_listing_stdout(stdout, int(listing_id))
+    return not present_in_cart
 
 def mark_second_queue_error(second_queue_path: Path, error_msg: str, listing_id: int) -> None:
     try:
