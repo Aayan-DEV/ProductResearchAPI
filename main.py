@@ -1070,76 +1070,56 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
     popular_ids_dedup = list(dict.fromkeys(result.get("popular_now_ids") or []))
     total_popular = len(popular_ids_dedup)
 
-    # Emit initial AI/keywords totals
-    try:
-        if progress_cb:
-            progress_cb({
-                "stage": "ai_keywords",
-                "user_id": user_id,
-                "remaining": total_popular,
-                "total": total_popular,
-                "message": "AI keywords initialized",
-            })
-            progress_cb({
-                "stage": "keywords_research",
-                "user_id": user_id,
-                "remaining": total_popular,
-                "total": total_popular,
-                "message": "Keywords research initialized",
-            })
-    except Exception:
-        pass
-
-    # Start AI/Everbee worker immediately
-    keywords_t = start_keywords_and_everbee_thread(popular_listings_path, outputs_dir, slug, queue_path=popular_queue_path, progress_cb=progress_cb, total_target=total_popular, user_id=user_id)
-
-    try:
-        # Once listingCards is done, finalize queue status so consumer can exit when done
-        etsy.finalize_popular_queue(popular_queue_path, user_id, destroy=False)
-    except Exception as e:
-        print(f"[Run] WARN: finalize queue failed: {e}")
-
-    # Start demand consumer (filtered to only popular file), and artifact processor restricted to those IDs
-    consumer_t = start_queue_consumer_thread(popular_queue_path, run_root_dir, outputs_dir, popular_listings_path=popular_listings_path, progress_cb=progress_cb)
-    processor_t = start_artifact_processor_thread(popular_queue_path, run_root_dir, outputs_dir, popular_ids_dedup, slug)
-
-    # Wait for threads (block until completion)
-    try:
-        consumer_t.join()
-    except Exception:
-        print("[Run] WARN: demand consumer thread join failed.")
-
-    try:
-        processor_t.join()
-    except Exception:
-        print("[Run] WARN: artifact processor thread join failed.")
-
-    # Ensure keywords/Everbee worker has finished so its results are in the megafile
-    try:
-        keywords_t.join()
-    except Exception:
-        print("[Run] WARN: keywords/everbee thread join failed.")
-
-    # Guarantee queue gets finalized even on exceptions
-    if queue_initialized:
+    # Early exit: if no popular IDs, skip background threads and finalize quickly
+    if total_popular == 0:
         try:
-            etsy.finalize_popular_queue(popular_queue_path, user_id, destroy=False)
+            if queue_initialized:
+                etsy.finalize_popular_queue(popular_queue_path, user_id, destroy=False)
         except Exception as e:
-            print(f"[Run] WARN: finalize queue in finally failed: {e}")
+            print(f"[Run] WARN: finalize queue (no popular) failed: {e}")
 
-    # NEW: Abort run if demand extractor signaled fatal cart residual error
-    fatal_path = os.path.join(outputs_dir, "fatal_cart_residual_error.json")
-    if os.path.exists(fatal_path):
+        # Build summary and megafile even if empty
+        second_step_summary_path = build_second_step_demand_summary(run_root_dir, popular_listings_path, slug)
+        megafile_path = build_megafile_from_outputs(outputs_dir, second_step_summary_path, slug)
+
         try:
-            with open(fatal_path, "r", encoding="utf-8") as f:
-                err_obj = json.load(f)
+            if progress_cb:
+                progress_cb({
+                    "stage": "complete",
+                    "user_id": user_id,
+                    "remaining": 0,
+                    "total": 0,
+                    "message": "Run complete (no popular listings found)",
+                    "megafile_path": megafile_path,
+                })
         except Exception:
-            err_obj = {"error": "even after removing product still in cart"}
-        return {
-            "success": False,
-            "error": err_obj.get("error") or "even after removing product still in cart",
+            pass
+
+        # Write per-user session log
+        session_paths = create_user_session_dirs(user_id, slug, desired_total, fetched_total)
+        write_json_file(session_paths["run_log_path"], {
+            "success": True,
+            "user_id": user_id,
+            "keyword": keyword,
+            "desired_total": desired_total,
+            "timing": {
+                "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(start_ts)),
+                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time())),
+                "duration_seconds": round(time.time() - start_ts, 3),
+            },
             "meta": {
-                "fatal_path": fatal_path,
+                "megafile_path": megafile_path,
+                "run_root_dir": run_root_dir,
+                "keyword_slug": slug,
+            },
+            "note": "No popular listings found; skipped demand processing.",
+        })
+
+        return {
+            "success": True,
+            "message": "No popular listings found for keyword; outputs initialized.",
+            "meta": {
+                "megafile_path": megafile_path,
                 "run_root_dir": run_root_dir,
                 "keyword_slug": slug,
             },
