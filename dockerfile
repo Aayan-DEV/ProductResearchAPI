@@ -1,43 +1,26 @@
-FROM python:3.13-slim
+# Lightweight Python base pinned by digest
+FROM docker.io/library/python:3.11-slim@sha256:1738c75ae61595d2a9a5301d60a9a2f61abe7017005b3ccb660103d2476c6946
 
-# Runtime configuration
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PORT=8000 \
-    WORKERS=1 \
-    MODEL_DIR=/data/models \
-    MODEL_PATH=/data/models/gemma-3n-E4B-it-Q4_K_S.gguf \
-    PIP_NO_CACHE_DIR=1 \
-    CMAKE_ARGS="-DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS" \
-    LLAMA_CPP_USE_OPENBLAS=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8080
 
-# System deps (curl for healthcheck; build-essential/cmake/openblas for llama-cpp-python)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    build-essential \
-    cmake \
-    git \
-    libopenblas-dev \
- && rm -rf /var/lib/apt/lists/*
-
-# App setup
+# Working directory
 WORKDIR /app
 
-# Install Python deps first to leverage layer caching
-COPY requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && \
-    pip install -r /app/requirements.txt
-
-# Copy source
+# Copy the entire project into the image
 COPY . /app
 
-# Healthcheck for Railway
-HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD curl -fsS http://localhost:${PORT}/health || exit 1
+# Install runtime dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    if [ -f requirements.txt ]; then \
+      pip install --no-cache-dir -r requirements.txt; \
+    fi && \
+    pip install --no-cache-dir gunicorn uvicorn
 
-# Port hint (Railway injects PORT env, we honor it)
-EXPOSE 8000
+# Expose the service port
+EXPOSE 8080
 
-# Start FastAPI via uvicorn; honors $PORT and $WORKERS
-CMD ["python","-m","uvicorn","main:app","--host","0.0.0.0","--port","${PORT}","--workers","${WORKERS}"]
+# Start the API with gunicorn; respects $PORT when provided (e.g., Railway)
+# Use UvicornWorker to run FastAPI (ASGI)
+CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-8080} -w 2 -k uvicorn.workers.UvicornWorker main:app"]
