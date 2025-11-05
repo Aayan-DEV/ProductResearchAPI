@@ -18,3 +18,4 @@ gemma-3n-E4B-it-GGUF/
 .DS_Store
 
 data/
+Helpers/test.py

@@ -17,21 +17,24 @@ mkdir -p "$MODEL_DIR"
 
 if [ ! -f "$MODEL_PATH" ]; then
   if [ -z "$MODEL_URL" ]; then
-    echo "MODEL_URL not set and model not found at $MODEL_PATH"
-    exit 1
+    echo "WARN: MODEL_URL not set and model not found at $MODEL_PATH"
+    echo "Starting server in degraded mode; LLM features disabled until model present."
+  else
+    echo "Model not found. Downloading from $MODEL_URL ..."
+    TMP="${MODEL_PATH}.tmp"
+    if curl -fL "$MODEL_URL" -o "$TMP"; then
+      if [ -n "$MODEL_SHA256" ]; then
+        echo "Verifying model checksum..."
+        echo "$MODEL_SHA256  $TMP" | sha256sum -c - || { echo "Checksum mismatch; removing temp."; rm -f "$TMP"; }
+      fi
+      if [ -f "$TMP" ]; then
+        mv "$TMP" "$MODEL_PATH"
+        echo "Model stored at $MODEL_PATH"
+      fi
+    else
+      echo "WARN: Model download failed; continuing without model."
+    fi
   fi
-
-  echo "Model not found. Downloading from $MODEL_URL ..."
-  TMP="${MODEL_PATH}.tmp"
-  curl -L "$MODEL_URL" -o "$TMP"
-
-  if [ -n "$MODEL_SHA256" ]; then
-    echo "Verifying model checksum..."
-    echo "$MODEL_SHA256  $TMP" | sha256sum -c -
-  fi
-
-  mv "$TMP" "$MODEL_PATH"
-  echo "Model stored at $MODEL_PATH"
 else
   echo "Model already present at $MODEL_PATH"
 fi

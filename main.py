@@ -38,17 +38,12 @@ download_progress: Dict[str, Optional[float | int | str]] = {
 }
 download_lock = threading.Lock()
 
-# Load environment variables
 load_dotenv()
-
-OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
-USERS_DIR = os.getenv("AI_USERS_DIR") or str(PROJECT_ROOT / "users")
 OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
 USERS_DIR = os.getenv("AI_USERS_DIR") or str(PROJECT_ROOT / "users")
 TEST_TXT_PATH = os.getenv("ETO_SEARCH_CURL_PATH") or str(
     PROJECT_ROOT / "EtoRequests" / "Search_request" / "txt_files" / "1" / "EtoRequest1.txt"
 )
-
 # Align helper module config to project root for API-only usage
 etsy.PROJECT_ROOT = PROJECT_ROOT
 etsy.OUTPUT_DIR = OUTPUT_DIR
