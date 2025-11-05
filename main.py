@@ -1070,60 +1070,77 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
     popular_ids_dedup = list(dict.fromkeys(result.get("popular_now_ids") or []))
     total_popular = len(popular_ids_dedup)
 
-    # Early exit: if no popular IDs, skip background threads and finalize quickly
+    # NEW: ensure downstream stages run; fallback when no popular IDs
     if total_popular == 0:
+        fallback_ids = result.get("html_listing_ids_all") or listing_ids
         try:
-            if queue_initialized:
-                etsy.finalize_popular_queue(popular_queue_path, user_id, destroy=False)
+            fallback_ids = [int(str(x)) for x in (fallback_ids or [])]
+        except Exception:
+            fallback_ids = listing_ids
+        fallback_ids = list(dict.fromkeys(fallback_ids))
+        if desired_total is not None:
+            try:
+                cap = max(1, int(desired_total))
+            except Exception:
+                cap = 10
+            fallback_ids = fallback_ids[:cap]
+        else:
+            fallback_ids = fallback_ids[:min(10, len(fallback_ids))]
+        try:
+            etsy.append_to_popular_queue(popular_queue_path, fallback_ids, 0, user_id)
         except Exception as e:
-            print(f"[Run] WARN: finalize queue (no popular) failed: {e}")
-
-        # Build summary and megafile even if empty
-        second_step_summary_path = build_second_step_demand_summary(run_root_dir, popular_listings_path, slug)
-        megafile_path = build_megafile_from_outputs(outputs_dir, second_step_summary_path, slug)
-
+            print(f"[Run] WARN: fallback queue append failed: {e}")
+        total_popular = len(fallback_ids)
         try:
             if progress_cb:
                 progress_cb({
-                    "stage": "complete",
+                    "stage": "fallback",
                     "user_id": user_id,
-                    "remaining": 0,
-                    "total": 0,
-                    "message": "Run complete (no popular listings found)",
-                    "megafile_path": megafile_path,
+                    "remaining": total_popular,
+                    "total": total_popular,
+                    "message": f"Fallback: queued {total_popular} listings from aggregated search",
                 })
         except Exception:
             pass
 
-        # Write per-user session log
-        session_paths = create_user_session_dirs(user_id, slug, desired_total, fetched_total)
-        write_json_file(session_paths["run_log_path"], {
-            "success": True,
-            "user_id": user_id,
-            "keyword": keyword,
-            "desired_total": desired_total,
-            "timing": {
-                "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(start_ts)),
-                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time())),
-                "duration_seconds": round(time.time() - start_ts, 3),
-            },
-            "meta": {
-                "megafile_path": megafile_path,
-                "run_root_dir": run_root_dir,
-                "keyword_slug": slug,
-            },
-            "note": "No popular listings found; skipped demand processing.",
-        })
+    # Start AI/Everbee and demand/artifacts threads
+    keywords_t = start_keywords_and_everbee_thread(
+        popular_listings_path, outputs_dir, slug,
+        queue_path=popular_queue_path,
+        progress_cb=progress_cb,
+        total_target=total_popular,
+        user_id=user_id,
+    )
+    consumer_t = start_queue_consumer_thread(
+        popular_queue_path, run_root_dir, outputs_dir,
+        popular_listings_path=popular_listings_path,
+        progress_cb=progress_cb,
+    )
+    artifact_t = start_artifact_processor_thread(
+        popular_queue_path, run_root_dir, outputs_dir,
+        listing_ids, slug,
+    )
 
-        return {
-            "success": True,
-            "message": "No popular listings found for keyword; outputs initialized.",
-            "meta": {
-                "megafile_path": megafile_path,
-                "run_root_dir": run_root_dir,
-                "keyword_slug": slug,
-            },
-        }
+    # Finalize queue so consumer exits when done
+    try:
+        etsy.finalize_popular_queue(popular_queue_path, user_id, destroy=False)
+    except Exception as e:
+        print(f"[Run] WARN: finalize queue failed: {e}")
+
+    # Wait for consumer to finish (bounded)
+    t0 = time.time()
+    timeout_s = float(os.getenv("DEMAND_JOIN_TIMEOUT", "180"))
+    while consumer_t.is_alive() and (time.time() - t0) < timeout_s:
+        consumer_t.join(timeout=1.0)
+    # small grace for keywords/artifacts
+    try:
+        keywords_t.join(timeout=5.0)
+    except Exception:
+        pass
+    try:
+        artifact_t.join(timeout=5.0)
+    except Exception:
+        pass
 
     print("[Run] Background threads completed.")
 
