@@ -1,7 +1,6 @@
 # Python base; 3.13 matches your current environment
 FROM python:3.13-slim
 
-# Runtime defaults and model location on Railway volume
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000 \
@@ -32,4 +31,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
     CMD ["sh", "-c", "curl -fsS http://localhost:${PORT:-8000}/health || exit 1"]
 
 # Entrypoint: downloads model if missing, then runs uvicorn
-CMD ["sh", "/app/bootstrap.sh"]
+CMD ["python","-m","uvicorn","main:app","--host","0.0.0.0","--port","${PORT}","--workers","${WORKERS}"]
