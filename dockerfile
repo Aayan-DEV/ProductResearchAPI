@@ -1,13 +1,13 @@
-# Lightweight Python base pinned by digest
-FROM docker.io/library/python:3.11-slim@sha256:1738c75ae61595d2a9a5301d60a9a2f61abe7017005b3ccb660103d2476c6946
+# Python slim; install curl and build tooling for llama-cpp-python
+FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 
-# Install curl and CA certificates
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates && \
+    apt-get install -y --no-install-recommends \
+      curl ca-certificates build-essential cmake && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
