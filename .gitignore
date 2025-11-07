@@ -19,3 +19,5 @@ gemma-3n-E4B-it-GGUF/
 
 data/
 Helpers/test.py
+Helpers/second_demand_extractor.py
+final_aayan_pdf_20251107-144210.json

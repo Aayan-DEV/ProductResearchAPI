@@ -17,11 +17,16 @@ from html.parser import HTMLParser
 # ===== Paths and constants =====
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RUNS_ROOT = PROJECT_ROOT / "outputs" / "cart_runs"
+RUNS_ROOT = PROJECT_ROOT / "outputs"
 TXT_FILES_ROOT = PROJECT_ROOT / "EtoRequests" / "Cart_sequence" / "txt_files"
 SPECIAL_ROOT = TXT_FILES_ROOT / "special"
 SPECIAL_SECOND_REMOVE_PATH = SPECIAL_ROOT / "1" / "removesecond.txt"  # fixed path per user request
 DEFAULT_COOKIE_JAR = PROJECT_ROOT / "outputs" / ".etsy_cookie_jar.txt"
+
+try:
+    from Helpers.supabase_helper import upload_cart_runs_and_cleanup
+except Exception:
+    from supabase_helper import upload_cart_runs_and_cleanup
 
 # ===== Basic utils =====
 
@@ -1794,7 +1799,7 @@ def ensure_listing_output_dir(run_dir: Path, listing_id: int) -> Path:
 
 def ensure_run_output_for_group(run_dir: Path, listing_id: int, group_num: int, group_type: str) -> Path:
     # Create only one timestamped out_dir; consumers must reuse this path
-    base = run_dir / "cart_runs" / f"group_{group_type}_{group_num}" / str(listing_id) / now_ts_compact()
+    base = Path("/tmp/ai_keywords_cart_runs") / run_dir.name / f"group_{group_type}_{group_num}" / str(listing_id) / now_ts_compact()
     base.mkdir(parents=True, exist_ok=True)
     return base
 
@@ -2480,7 +2485,7 @@ def load_listing_ids_from_popular(popular_path: Path, count: int) -> List[int]:
 
 def ensure_output_dirs(run_dir: Path, listing_id: int, group_num: int, group_type: str) -> Path:
     ts = now_ts_compact()
-    out_dir = run_dir / "cart_runs" / f"group_{group_type}_{group_num}" / f"{listing_id}" / ts
+    out_dir = Path("/tmp/ai_keywords_cart_runs") / run_dir.name / f"group_{group_type}_{group_num}" / f"{listing_id}" / ts
     out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir
 
@@ -2849,6 +2854,20 @@ def main():
         entries=summary_entries,
     )
     print(f"\nRun summary saved: {summary_path}")
+
+    # Upload tmp cart_runs to Supabase and remove local tmp copy
+    try:
+        from Helpers.supabase_helper import upload_tmp_cart_runs_and_cleanup
+    except Exception:
+        from supabase_helper import upload_tmp_cart_runs_and_cleanup
+    try:
+        up_res = upload_cart_runs_and_cleanup(run_dir, dest_prefix=f"cart_runs/{run_dir.name}")
+        print(f"Uploaded cart_runs to Supabase: {up_res.get('uploaded_count')} files, errors: {up_res.get('errors_count')}")
+        if up_res.get("cleanup_error"):
+            print(f"Cleanup warning: {up_res['cleanup_error']}")
+    except Exception as e:
+        print(f"Upload/cleanup failed: {e}")
+
     # Final sweep: ensure the popular-now file reflects unique IDs and correct count
     try:
         normalize_popular_listings_file(popular_json_path)
@@ -2919,6 +2938,19 @@ def single_mode():
     run_remove_from_cart(removingcart_path, listing_id, cart_id, inventory_id, DEFAULT_COOKIE_JAR, out_dir)
 
     print("\nSingle-mode run complete.")
+
+    # Ensure any cart_runs (if created) are uploaded and removed locally
+    try:
+        from Helpers.supabase_helper import upload_tmp_cart_runs_and_cleanup
+    except Exception:
+        from supabase_helper import upload_tmp_cart_runs_and_cleanup
+    try:
+        up_res = upload_cart_runs_and_cleanup(run_dir, dest_prefix=f"cart_runs/{run_dir.name}")
+        print(f"Uploaded cart_runs to Supabase: {up_res.get('uploaded_count')} files, errors: {up_res.get('errors_count')}")
+        if up_res.get("cleanup_error"):
+            print(f"Cleanup warning: {up_res['cleanup_error']}")
+    except Exception as e:
+        print(f"Upload/cleanup failed: {e}")
 
 # ===== Entry point =====
 
