@@ -5,26 +5,19 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 
-# Install curl (and CA certificates for HTTPS), then clean apt cache
+# Install curl and CA certificates
 RUN apt-get update && \
     apt-get install -y --no-install-recommends curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# Working directory
 WORKDIR /app
-
-# Copy the entire project into the image
 COPY . /app
 
-# Install runtime dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
     if [ -f requirements.txt ]; then \
       pip install --no-cache-dir -r requirements.txt; \
     fi && \
     pip install --no-cache-dir gunicorn uvicorn
 
-# Expose the service port
 EXPOSE 8080
-
-# Start the API with gunicorn; respects $PORT when provided (e.g., Railway)
 CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-8080} -w 2 -k uvicorn.workers.UvicornWorker main:app"]

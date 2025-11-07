@@ -617,6 +617,16 @@ def inject_cookie_jar(cmd: str, jar_path: Path, read: bool, write: bool) -> str:
         flags.append(f"-b '{jar_path}'")
     if write:
         flags.append(f"-c '{jar_path}'")
+
+    # If reading from a missing jar and ETSY_COOKIE_HEADER is provided, inject header too
+    try:
+        jar_missing = read and (not jar_path.exists())
+    except Exception:
+        jar_missing = False
+    cookie_hdr = os.getenv("ETSY_COOKIE_HEADER", "")
+    if jar_missing and cookie_hdr:
+        flags.append(f"-H 'Cookie: {cookie_hdr}'")
+
     if not flags:
         return cmd
     pattern = re.compile(r"\bcurl\b(?:\s+--location)?")
@@ -629,6 +639,12 @@ def normalize_curl_multiline(content: str) -> str:
 
 def run_shell_command(cmd: str, timeout: int = 120) -> Tuple[int, str, str]:
     cmd_line = normalize_curl_multiline(cmd)
+    # Ensure curl has sensible flags everywhere (including listing debug path)
+    cmd_line = add_location_flag_to_curl(cmd_line)
+    # Add --fail-with-body to surface HTTP >=400 as non-zero exit
+    if re.search(r"(^|\s)--fail-with-body(\s|$)", cmd_line) is None:
+        cmd_line = re.sub(r"\bcurl\b", "curl --fail-with-body", cmd_line, count=1)
+
     args = shlex.split(cmd_line)
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

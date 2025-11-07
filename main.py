@@ -329,9 +329,12 @@ app = FastAPI(title="AI Keywords Etsy API", version="1.2.0", lifespan=lifespan)
 
 @app.get("/ready")
 def ready() -> Dict:
+    import shutil
+    curl_path = shutil.which("curl")
+    curl_present = curl_path is not None
+
     st = ensure_model_available()
-    curl_st = ensure_curl_available()
-    status_ok = st["model_present"] and not st["error"] and curl_st["curl_present"]
+    status_ok = st["model_present"] and not st["error"] and curl_present
     return {
         "status": "ok" if status_ok else "degraded",
         "model_dir": st["model_dir"],
@@ -341,8 +344,8 @@ def ready() -> Dict:
         "download_attempted": st["downloaded"],
         "volume_mounted": st["volume_mounted"],
         "error": st["error"],
-        "curl_present": curl_st["curl_present"],
-        "curl_path": curl_st["curl_path"],
+        "curl_present": curl_present,
+        "curl_path": curl_path,
         "download_progress": {
             "status": download_progress.get("status"),
             "total_bytes": download_progress.get("total_bytes"),
