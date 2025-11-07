@@ -6,6 +6,7 @@ app = "ai-keywords-etsy-api"
 primary_region = "iad"
 
 [build]
+  context = "."
   dockerfile = "Dockerfile"
 
 [env]
