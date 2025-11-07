@@ -93,7 +93,7 @@ def now_ts_compact() -> str:
 # Background upload scheduler for per-listing cart_runs
 BACKGROUND_UPLOAD_THREADS: List[threading.Thread] = []
 
-def schedule_background_upload_and_cleanup(out_dir: Path, run_dir: Path) -> None:
+def schedule_background_upload_and_cleanup(out_dir: Path, run_dir: Path, progress_cb: Optional[callable] = None, user_id: Optional[str] = None) -> None:
     try:
         if not out_dir.exists() or "cart_runs" not in out_dir.parts:
             return
@@ -106,6 +106,18 @@ def schedule_background_upload_and_cleanup(out_dir: Path, run_dir: Path) -> None
         rel_parts = out_dir.parts[idx_cr + 1:]
         listing_id_str = rel_parts[1] if len(rel_parts) >= 2 else "listing"
 
+        # Emit pre-stage progress
+        try:
+            if progress_cb:
+                progress_cb({
+                    "stage": "upload_cart_runs",
+                    "user_id": user_id or Path.home().name,
+                    "listing_id": int(listing_id_str) if str(listing_id_str).isdigit() else None,
+                    "message": f"Staging cart_runs for upload to outputs/{run_dir.name}/cart_runs",
+                })
+        except Exception:
+            pass
+
         # Use a unique tmp root per listing to avoid staging races
         tmp_root_name = f"{run_dir.name}__{listing_id_str}__{now_ts_compact()}"
         staging_root = Path("/tmp/ai_keywords_cart_runs") / tmp_root_name
@@ -116,15 +128,41 @@ def schedule_background_upload_and_cleanup(out_dir: Path, run_dir: Path) -> None
         # Copy entire listing out_dir to staging
         shutil.copytree(out_dir, stage_target, dirs_exist_ok=True)
 
+        dest_prefix = f"outputs/{run_dir.name}/cart_runs"
+
         # Start background upload to Supabase under outputs/<run_dir.name>/cart_runs
         def _worker():
             try:
-                upload_tmp_cart_runs_and_cleanup(
+                res = upload_tmp_cart_runs_and_cleanup(
                     tmp_root_name,
-                    dest_prefix=f"outputs/{run_dir.name}/cart_runs",
+                    dest_prefix=dest_prefix,
                 )
+                # Emit success progress
+                try:
+                    if progress_cb:
+                        uploaded_count = (res or {}).get("uploaded_count")
+                        errors_count = (res or {}).get("errors_count")
+                        progress_cb({
+                            "stage": "upload_cart_runs",
+                            "user_id": user_id or Path.home().name,
+                            "listing_id": int(listing_id_str) if str(listing_id_str).isdigit() else None,
+                            "message": f"Uploaded cart_runs to {dest_prefix} (uploaded={uploaded_count or 'n/a'} errors={errors_count or 0})",
+                        })
+                except Exception:
+                    pass
             except Exception as e:
                 print(f"Background upload failed for {out_dir}: {e}")
+                # Emit failure progress
+                try:
+                    if progress_cb:
+                        progress_cb({
+                            "stage": "upload_cart_runs_error",
+                            "user_id": user_id or Path.home().name,
+                            "listing_id": int(listing_id_str) if str(listing_id_str).isdigit() else None,
+                            "message": f"Upload failed: {e}",
+                        })
+                except Exception:
+                    pass
 
         t = threading.Thread(target=_worker, daemon=True)
         t.start()
@@ -1567,6 +1605,12 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                             f"  remaining_after: {remaining_after}\n"
                             f"  processed_total: {len(processed)}"
                         )
+
+                        # Schedule background upload of per-listing cart_runs directory and cleanup
+                        try:
+                            schedule_background_upload_and_cleanup(out_dir, Path(run_dir), progress_cb=progress_cb, user_id=user_label)
+                        except Exception:
+                            pass
                     except Exception as e:
                         err_path = Path(outputs_dir) / f"queue_error_listing_{lid_i}.txt"
                         write_file_text(err_path, str(e))
@@ -1576,10 +1620,42 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                             f"  listing_id: {lid_i}\n"
                             f"  error: {e}"
                         )
+                        # Emit a user-facing error progress snapshot
+                        try:
+                            if progress_cb:
+                                rem = sum(
+                                    1 for jt in items
+                                    if isinstance(jt, dict)
+                                    and str(jt.get("listing_id", "")).isdigit()
+                                    and int(str(jt.get("listing_id"))) not in processed
+                                )
+                                progress_cb({
+                                    "stage": "demand_extraction_error",
+                                    "user_id": user_label,
+                                    "remaining": rem,
+                                    "total": total_in_source,
+                                    "listing_id": lid_i,
+                                    "message": f"Error processing listing_id={lid_i}: {e}",
+                                })
+                        except Exception:
+                            pass
                         # NEW: Fatal stop on residual cart error
                         if "still in cart" in str(e):
                             mark_second_queue_error(second_queue_path, str(e), lid_i)
                             print("Stopping queue due to residual cart verification failure.")
+                            # Also emit a fatal error progress event
+                            try:
+                                if progress_cb:
+                                    progress_cb({
+                                        "stage": "demand_extraction_error",
+                                        "user_id": user_label,
+                                        "remaining": rem if 'rem' in locals() else None,
+                                        "total": total_in_source,
+                                        "listing_id": lid_i,
+                                        "message": "Fatal: residual cart after removal, stopping.",
+                                    })
+                            except Exception:
+                                pass
                             break
 
                 # Exit when queue is completed and all items are processed
