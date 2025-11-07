@@ -23,6 +23,7 @@ try:
         public_url,
         get_bucket_name,
         upload_tmp_cart_runs_and_cleanup,
+        upload_directory,
     )
 except Exception:
     from supabase_helper import (
@@ -32,6 +33,7 @@ except Exception:
         public_url,
         get_bucket_name,
         upload_tmp_cart_runs_and_cleanup,
+        upload_directory,
     )
 
 # ===== Paths and constants =====
@@ -1135,6 +1137,8 @@ def process_listing_demand(listing_id: int, run_dir: Path, outputs_dir: Path) ->
     # Step 2: listing — modify listing/<id>, run, and extract demand/signal
     try:
         mod_listing = modify_listing_command(read_file_text(listing_path), int(listing_id))
+        # Inject cookie jar and ensure --location so redirects are followed
+        mod_listing = inject_cookie_jar(mod_listing, DEFAULT_COOKIE_JAR, read=True, write=True)
         write_file_text(out_base / "listing_modified_curl.txt", mod_listing)
         write_file_text(out_base / "listing_sent_curl.txt", mod_listing)
         code, out, err = run_shell_command(mod_listing)
@@ -1802,11 +1806,10 @@ def extract_scarcity_signal_title_from_json(obj: dict) -> Optional[str]:
                     return t
 
     # Known nested containers to inspect
-    for container_key in ("data", "cart", "payload", "event_payload", "response"):
+    for container_key in ("data", "cart", "payload", "event_payload", "response", "meta"):
         container = obj.get(container_key)
         if not isinstance(container, dict):
             continue
-
         # Direct key
         t = maybe_title(container.get("scarcity_signal_title"))
         if t:
@@ -1874,10 +1877,9 @@ def parse_demand_from_scarcity_title(title: str) -> Optional[int]:
         return None
 
     patterns = [
-        r"In\s+\d+\s+carts?,\s*(\d+)\s+bought\s+in\s+the\s+past\s+24\s+hours",
-        r"In\s+\d+\s+carts?,\s*(\d+)\s+sold\s+in\s+the\s+past\s+24\s+hours",
-        r"(\d+)\s+bought\s+in\s+the\s+past\s+24\s+hours",
-        r"(\d+)\s+sold\s+in\s+the\s+past\s+24\s+hours",
+        r"In\s+\d+\s+carts?,\s*(\d+)\s+(?:bought|sold|orders?|purchases?|purchased|buyers?)\s+in\s+(?:the\s+)?(?:past|last)\s+24\s+hours",
+        r"(\d+)\s+(?:bought|sold|orders?|purchases?|purchased|buyers?)\s+in\s+(?:the\s+)?(?:past|last)\s+24\s+hours",
+        r"(\d+)\s+(?:sold|orders?)\s+today",
     ]
     for pat in patterns:
         m = re.search(pat, t, flags=re.IGNORECASE)
@@ -1886,6 +1888,14 @@ def parse_demand_from_scarcity_title(title: str) -> Optional[int]:
                 return int(m.group(1))
             except Exception:
                 pass
+    # Fallback: if the phrase mentions sales/purchases, prefer the last number (e.g., 'In 39 carts, 3 bought...')
+    try:
+        if re.search(r"\b(sold|bought|orders?|purchases?|purchased|buyers?)\b", t, flags=re.IGNORECASE):
+            nums = re.findall(r"\d+", t)
+            if nums:
+                return int(nums[-1])
+    except Exception:
+        pass
     return None
 
 # ===== Output organization =====
@@ -2118,11 +2128,10 @@ def parse_listing_json_and_extract(stdout: str, out_dir: Path) -> Tuple[Optional
     return scarcity_title, demand_value
 
 # NEW: Post-removal verification helpers
-def run_listing_post_remove_check(listing_txt_path: Path, out_dir: Path) -> Tuple[int, str, str]:
+def run_listing_post_remove_check(listing_txt_path: Path, out_dir: Path, jar_path: Path) -> Tuple[int, str, str]:
     original = read_file_text(listing_txt_path)
     write_file_text(out_dir / "verify_post_remove_listing_original.txt", original)
 
-    # NEW: inject cookie jar so verification uses the same session (post-remove)
     cmd_jar = inject_cookie_jar(original, jar_path, read=True, write=True)
     write_file_text(out_dir / "verify_post_remove_listing_sent_with_cookiejar.txt", cmd_jar)
 
@@ -2771,141 +2780,96 @@ def write_run_summary(
 def main():
     print_banner()
 
-    # Choose a run
+    # Pick a run and resolve paths/artifacts
     outputs_root = PROJECT_ROOT / "outputs"
     run_info = select_run_and_get_paths(outputs_root)
+
     run_dir: Path = run_info["run_dir"]
     outputs_dir: Path = run_info["outputs_dir"]
-    popular_json_path: Path = run_info["popular_json_path"] or POPULAR_JSON_PATH_DEFAULT
+    demand_extracted_dir: Path = run_info["demand_extracted_dir"]
+    popular_json_path: Path = run_info.get("popular_json_path") or POPULAR_JSON_PATH_DEFAULT
 
-    # Choose how many listings from popular to process
+    # Ask how many listings to process
     try:
         raw = input("How many listings to process from popular? [default 5]: ").strip()
         count = int(raw) if raw else 5
     except Exception:
         count = 5
 
+    # Resolve listing_ids from the popular listings file
     listing_ids = load_listing_ids_from_popular(popular_json_path, count)
     print(f"\nProcessing {len(listing_ids)} listings...")
 
-    # NEW: Load full listing objects for summary embedding
+    # For summary embedding (title/source fields), load the source info map
     source_info_map = load_source_listing_info_map(popular_json_path)
-
-    normal_groups = find_group_numbers(TXT_FILES_ROOT)
-    special_groups = find_special_group_numbers(SPECIAL_ROOT)
-
-    if not normal_groups and not special_groups:
-        print("No groups found under txt_files. Please ensure required curl files exist.")
-        return
-
-    # Assign alternating normal/special groups if both exist
-    assignments = []
-    for i, lid in enumerate(listing_ids, start=1):
-        if special_groups:
-            gt = "special" if i % 2 == 0 else "normal"
-        else:
-            gt = "normal"
-        if gt == "normal":
-            gnum = normal_groups[i % len(normal_groups)]
-        else:
-            gnum = special_groups[i % len(special_groups)]
-        assignments.append((lid, gnum, gt))
-
-    cookie_jar = DEFAULT_COOKIE_JAR
 
     summary_entries: List[dict] = []
 
-    for i, (listing_id, group_num, group_type) in enumerate(assignments, start=1):
+    for idx, listing_id in enumerate(listing_ids, start=1):
         print("\n" + "-" * 80)
-        print(f"[{i}/{len(assignments)}] Listing {listing_id} via group {group_type} #{group_num}")
-        out_dir = ensure_run_output_for_group(run_dir, listing_id, group_num, group_type)
+        print(f"[{idx}/{len(listing_ids)}] Listing {listing_id}")
 
-        # Always clear cache before the flow
-        clear_cookie_jar(cookie_jar)
-        write_file_text(out_dir / "cookie_jar_cleared.txt", f"Cleared cache at start for listing_id={listing_id}")
-
+        summary = None
         try:
-            if group_type == "special":
-                gettingcart_path, listing_txt_path, pers_path, removingcart_path = special_group_paths(group_num)
-                # ... existing code ...
-                entry = build_run_summary_entry(
-                    listing_id=listing_id,
-                    group_num=group_num,
-                    group_type=group_type,
-                    run_dir=run_dir,
-                    out_dir=out_dir,
-                    source_info=source_info_map.get(listing_id),
-                    popular_info=source_info_map.get(listing_id),
-                    scarcity_title=scarcity_title,
-                    demand_value=demand_value,
-                    group_files=group_files,
-                )
-                summary_entries.append(entry)
-            else:
-                gettingcart_path, listing_txt_path, removingcart_path = group_paths(group_num)
-                # Copy originals for visibility
-                safe_copy(gettingcart_path, out_dir / f"gettingcart_original_group_{group_num}.txt")
-                safe_copy(listing_txt_path, out_dir / f"listing_original_group_{group_num}.txt")
-                safe_copy(removingcart_path, out_dir / f"removingcart_original_group_{group_num}.txt")
-                # Add to cart
-                result = run_add_to_cart(gettingcart_path, listing_id, cookie_jar, out_dir)
-                if result is None:
-                    print("Add-to-cart failed or values not parsed; skipping listing.")
-                    write_file_text(out_dir / "skipped.txt", "Skipping due to add-to-cart failure.")
-                    continue
-                cart_id, inventory_id = result
-                # Listing request — debug curl verbatim
-                rc, c_stdout, c_stderr = execute_listing_curl_verbatim(listing_txt_path, out_dir)
-                if rc != 0 or not c_stdout.strip():
-                    print("Listing curl returned non-zero or empty response; attempting JSON parse anyway.")
-                scarcity_title, demand_value = parse_listing_json_and_extract(c_stdout, out_dir)
-                # Remove from cart — pass inventory_id and out_dir
-                run_remove_from_cart(removingcart_path, listing_id, cart_id, inventory_id, cookie_jar, out_dir)
-                # Verify removal
-                ok = verify_cart_empty_post_removal(listing_txt_path, listing_id, out_dir)
-                if not ok:
-                    stop_obj = {
-                        "error": "even after removing product still in cart",
-                        "listing_id": int(listing_id),
-                        "group_type": "normal",
-                        "group_num": int(group_num),
-                        "out_dir": str(out_dir),
-                        "timestamp": datetime.utcnow().isoformat() + "Z",
-                    }
-                    write_file_text(outputs_dir / "fatal_cart_residual_error.json", json.dumps(stop_obj, ensure_ascii=False, indent=2))
-                    print("ERROR: even after removing product still in cart. Aborting run.")
-                    return
-                group_files = {
-                    "gettingcart": gettingcart_path,
-                    "listing": listing_txt_path,
-                    "removingcart": removingcart_path,
-                }
-                entry = build_run_summary_entry(
-                    listing_id=listing_id,
-                    group_num=group_num,
-                    group_type=group_type,
-                    run_dir=run_dir,
-                    out_dir=out_dir,
-                    source_info=source_info_map.get(listing_id),
-                    popular_info=source_info_map.get(listing_id),
-                    scarcity_title=scarcity_title,
-                    demand_value=demand_value,
-                    group_files=group_files,
-                )
-                summary_entries.append(entry)
+            # Run the full demand pipeline (add → listing → parse → variations → remove → verify)
+            summary = process_listing_demand(int(listing_id), run_dir, outputs_dir)
+
+            # Unify listing JSON filename for downstream consumers:
+            # If listing_stdout.json exists (from process_listing_demand), mirror it to listing_curl_stdout.json
+            out_dir = Path(summary.get("out_dir") or ensure_run_output_for_group(run_dir, int(listing_id), 1, summary.get("group_type") or "non_personalise"))
+            lstdout_json = out_dir / "listing_stdout.json"
+            lcurl_json = out_dir / "listing_curl_stdout.json"
+            try:
+                if lstdout_json.exists() and not lcurl_json.exists():
+                    write_file_text(lcurl_json, read_file_text(lstdout_json))
+            except Exception:
+                pass
+
+            # Build summary entry object aligned with the run_summary layout
+            group_files = {
+                "gettingcart": out_dir / "gettingcart_cmd.txt",
+                "listing": out_dir / "listing_cmd.txt",
+                "removingcart": out_dir / "removingcart_cmd_template.txt",
+            }
+            entry = build_run_summary_entry(
+                listing_id=int(listing_id),
+                group_num=int(summary.get("group_num") or 1),
+                group_type=str(summary.get("group_type") or "non_personalise"),
+                run_dir=run_dir,
+                out_dir=out_dir,
+                source_info=source_info_map.get(int(listing_id)),
+                popular_info=source_info_map.get(int(listing_id)),
+                scarcity_title=summary.get("scarcity_title"),
+                demand_value=summary.get("demand_value"),
+                group_files=group_files,
+            )
+            summary_entries.append(entry)
+
+            # Progress info
+            print(f"→ group {entry['group_type']} #{entry['group']}; demand={entry['demand']} title={entry.get('scarcity_signal_title') or 'n/a'}")
+
         except KeyboardInterrupt:
             print("\nInterrupted by user.")
-            return
+            break
+        except RuntimeError as e:
+            # process_listing_demand raises when removal verification fails (fatal)
+            print(f"Fatal error on listing {listing_id}: {e}")
+            break
         except Exception as e:
-            print(f"Error processing listing_id={listing_id}: {e}")
-            write_file_text(out_dir / "unexpected_error.txt", f"{e}")
+            # Unexpected error; record and continue
+            out_dir_fallback = ensure_run_output_for_group(run_dir, int(listing_id), 1, "error")
+            write_file_text(out_dir_fallback / "unexpected_error.txt", str(e))
         finally:
-            # Always stage, upload in background, and delete local cart_run per listing
-            schedule_background_upload_and_cleanup(out_dir, run_dir)
+            # Stage, upload cart_runs in background, and delete local per listing
+            try:
+                if summary and summary.get("out_dir"):
+                    schedule_background_upload_and_cleanup(Path(summary["out_dir"]), run_dir)
+            except Exception:
+                pass
 
-    # NEW: Write run summary JSON at the end
+    # Write run summary JSON at the end
     summary_path = write_run_summary(
-        demand_extracted_dir=run_info["demand_extracted_dir"],
+        demand_extracted_dir=demand_extracted_dir,
         requested_count=count,
         run_dir=run_dir,
         source_choice="popular",
@@ -2913,6 +2877,25 @@ def main():
         entries=summary_entries,
     )
     print(f"\nRun summary saved: {summary_path}")
+
+    # Upload the 'demand extracted' directory to Supabase for persistence/verification
+    try:
+        upload_res = upload_directory(
+            None,  # use default bucket
+            str(demand_extracted_dir),
+            dest_prefix=f"outputs/{run_dir.name}/demand_extracted",
+        )
+        write_file_text(demand_extracted_dir / "upload_result.json", json.dumps(upload_res, ensure_ascii=False, indent=2))
+        print(f"Uploaded demand extracted: {upload_res.get('uploaded_count', 0)} files, errors: {upload_res.get('errors_count', 0)}")
+        # Show one sample public URL for quick validation
+        try:
+            sample = next((x for x in upload_res.get("uploaded", []) if "public_url" in x), None)
+            if sample:
+                print(f"Sample public URL: {sample['public_url']}")
+        except Exception:
+            pass
+    except Exception as e:
+        print(f"Demand extracted upload error: {e}")
 
     # Wait for background uploads to finish to ensure Supabase is consistent
     print("Waiting for background uploads to finish...")
