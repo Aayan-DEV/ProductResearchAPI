@@ -640,6 +640,11 @@ def run_shell_command(cmd: str, timeout: int = 120) -> Tuple[int, str, str]:
         except Exception:
             pass
         return 124, "", "TimeoutExpired"
+    except FileNotFoundError as e:
+        missing_prog = args[0] if args else "unknown"
+        if missing_prog == "curl":
+            return 127, "", "curl not found. Install curl or ensure PATH. On Railway, ensure Dockerfile installs curl."
+        return 127, "", f"{missing_prog} not found: {e}"
     except Exception as e:
         return 1, "", f"{e}"
 

@@ -5,6 +5,11 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
 
+# Install curl (and CA certificates for HTTPS), then clean apt cache
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
 # Working directory
 WORKDIR /app
 
@@ -22,5 +27,4 @@ RUN pip install --no-cache-dir --upgrade pip && \
 EXPOSE 8080
 
 # Start the API with gunicorn; respects $PORT when provided (e.g., Railway)
-# Use UvicornWorker to run FastAPI (ASGI)
 CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-8080} -w 2 -k uvicorn.workers.UvicornWorker main:app"]

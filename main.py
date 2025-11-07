@@ -71,6 +71,14 @@ app = FastAPI(title="AI Keywords Etsy API", version="1.2.0")
 
 # ---------- Utils ----------
 
+def ensure_curl_available() -> Dict[str, any]:
+    import shutil
+    curl_path = shutil.which("curl")
+    return {
+        "curl_present": curl_path is not None,
+        "curl_path": curl_path,
+    }
+
 def _to_bucket_path(path_str: str) -> str | None:
     # Map local outputs/users paths to 'outputs/...', 'users/...'
     p = Path(path_str).resolve()
@@ -322,8 +330,10 @@ app = FastAPI(title="AI Keywords Etsy API", version="1.2.0", lifespan=lifespan)
 @app.get("/ready")
 def ready() -> Dict:
     st = ensure_model_available()
+    curl_st = ensure_curl_available()
+    status_ok = st["model_present"] and not st["error"] and curl_st["curl_present"]
     return {
-        "status": "ok" if st["model_present"] and not st["error"] else "degraded",
+        "status": "ok" if status_ok else "degraded",
         "model_dir": st["model_dir"],
         "model_path": st["model_path"],
         "model_present": st["model_present"],
@@ -331,6 +341,8 @@ def ready() -> Dict:
         "download_attempted": st["downloaded"],
         "volume_mounted": st["volume_mounted"],
         "error": st["error"],
+        "curl_present": curl_st["curl_present"],
+        "curl_path": curl_st["curl_path"],
         "download_progress": {
             "status": download_progress.get("status"),
             "total_bytes": download_progress.get("total_bytes"),
