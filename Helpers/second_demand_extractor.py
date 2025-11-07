@@ -13,6 +13,26 @@ import time
 import requests
 import html as html_lib
 from html.parser import HTMLParser
+import threading
+
+try:
+    from Helpers.supabase_helper import (
+        upload_cart_runs_and_cleanup,
+        upload_bytes,
+        upload_file,
+        public_url,
+        get_bucket_name,
+        upload_tmp_cart_runs_and_cleanup,
+    )
+except Exception:
+    from supabase_helper import (
+        upload_cart_runs_and_cleanup,
+        upload_bytes,
+        upload_file,
+        public_url,
+        get_bucket_name,
+        upload_tmp_cart_runs_and_cleanup,
+    )
 
 # ===== Paths and constants =====
 
@@ -31,19 +51,26 @@ except Exception:
 # ===== Basic utils =====
 
 def read_file_text(p: Path) -> str:
-    if not p.exists():
-        raise FileNotFoundError(f"Missing file: {p}")
+    # Local-first reads for performance; Supabase is handled by background uploader
     try:
-        return p.read_text(encoding="utf-8")
+        if not p.exists():
+            raise FileNotFoundError(f"Missing file: {p}")
+        try:
+            return p.read_text(encoding="utf-8")
+        except Exception:
+            with open(p, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
     except Exception:
         with open(p, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
 
 def write_file_text(p: Path, content: str) -> None:
+    # Local-first writes for performance
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
 
 def safe_copy(src: Path, dst: Path) -> None:
+    # Local-first copies for performance
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
@@ -55,10 +82,87 @@ def rm_file_if_exists(p: Path) -> None:
         pass
 
 def ensure_dir(p: Path) -> None:
+    # Local directories are created; background upload handles Supabase
     p.mkdir(parents=True, exist_ok=True)
 
 def now_ts_compact() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+
+# Background upload scheduler for per-listing cart_runs
+BACKGROUND_UPLOAD_THREADS: List[threading.Thread] = []
+
+def schedule_background_upload_and_cleanup(out_dir: Path, run_dir: Path) -> None:
+    try:
+        if not out_dir.exists() or "cart_runs" not in out_dir.parts:
+            return
+
+        # Derive relative path under cart_runs to reconstruct in staging
+        try:
+            idx_cr = out_dir.parts.index("cart_runs")
+        except ValueError:
+            return
+        rel_parts = out_dir.parts[idx_cr + 1:]
+        listing_id_str = rel_parts[1] if len(rel_parts) >= 2 else "listing"
+
+        # Use a unique tmp root per listing to avoid staging races
+        tmp_root_name = f"{run_dir.name}__{listing_id_str}__{now_ts_compact()}"
+        staging_root = Path("/tmp/ai_keywords_cart_runs") / tmp_root_name
+        # Copy to staging without adding an extra 'cart_runs' layer
+        stage_target = staging_root / Path(*rel_parts)
+
+        ensure_dir(stage_target.parent)
+        # Copy entire listing out_dir to staging
+        shutil.copytree(out_dir, stage_target, dirs_exist_ok=True)
+
+        # Start background upload to Supabase under outputs/<run_dir.name>/cart_runs
+        def _worker():
+            try:
+                upload_tmp_cart_runs_and_cleanup(
+                    tmp_root_name,
+                    dest_prefix=f"outputs/{run_dir.name}/cart_runs",
+                )
+            except Exception as e:
+                print(f"Background upload failed for {out_dir}: {e}")
+
+        t = threading.Thread(target=_worker, daemon=True)
+        t.start()
+        BACKGROUND_UPLOAD_THREADS.append(t)
+
+        # Remove local out_dir immediately after staging
+        try:
+            shutil.rmtree(out_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+    except Exception as e:
+        print(f"Failed to schedule upload for {out_dir}: {e}")
+
+def _supabase_cart_runs_obj_path(path: Path) -> Optional[str]:
+    parts = path.parts
+    if "cart_runs" not in parts:
+        return None
+    try:
+        idx_cr = parts.index("cart_runs")
+    except ValueError:
+        return None
+
+    run_name = None
+    if "outputs" in parts:
+        try:
+            idx_out = parts.index("outputs")
+            if idx_out + 1 < idx_cr:
+                run_name = parts[idx_out + 1]
+        except ValueError:
+            pass
+    if run_name is None and idx_cr - 1 >= 0:
+        run_name = parts[idx_cr - 1]
+
+    rel_parts = parts[idx_cr + 1:]
+    prefix = ["outputs"]
+    if run_name:
+        prefix.append(run_name)
+    prefix.append("cart_runs")
+    return "/".join(prefix + list(rel_parts)).strip("/")
 
 # ===== UI helpers =====
 
@@ -856,7 +960,7 @@ def extract_variations_clean_json(out_dir: Path) -> Optional[Path]:
 
     out_json = out_dir / "variations_cleaned.json"
     try:
-        out_json.write_text(json.dumps({"variations": variations}, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_file_text(out_json, json.dumps({"variations": variations}, ensure_ascii=False, indent=2))
     except Exception as e:
         write_file_text(out_dir / "variations_clean_error.txt", str(e))
         return None
@@ -1798,9 +1902,9 @@ def ensure_listing_output_dir(run_dir: Path, listing_id: int) -> Path:
     return base
 
 def ensure_run_output_for_group(run_dir: Path, listing_id: int, group_num: int, group_type: str) -> Path:
-    # Create only one timestamped out_dir; consumers must reuse this path
-    base = Path("/tmp/ai_keywords_cart_runs") / run_dir.name / f"group_{group_type}_{group_num}" / str(listing_id) / now_ts_compact()
-    base.mkdir(parents=True, exist_ok=True)
+    base = run_dir / "cart_runs" / f"group_{group_type}_{group_num}" / str(listing_id) / now_ts_compact()
+    # Ensure local dir exists for fast local-first writes and later staging
+    ensure_dir(base)
     return base
 
 # Helper: decide if a listing is personalizable using the latest popular JSON
@@ -1844,6 +1948,9 @@ def resolve_cart_sequence_paths(is_personalizable: bool) -> Dict[str, Optional[P
 def save_combined_run_json(out_dir: Path, summary: Dict, outputs_dir: Path) -> Path:
     def read_if_exists(p: Path) -> Optional[str]:
         try:
+            # Attempt Supabase read for cart_runs unconditionally; tolerate missing
+            if "cart_runs" in p.parts:
+                return read_file_text(p)
             return p.read_text(encoding="utf-8") if p.exists() else None
         except Exception:
             return None
@@ -2485,8 +2592,8 @@ def load_listing_ids_from_popular(popular_path: Path, count: int) -> List[int]:
 
 def ensure_output_dirs(run_dir: Path, listing_id: int, group_num: int, group_type: str) -> Path:
     ts = now_ts_compact()
-    out_dir = Path("/tmp/ai_keywords_cart_runs") / run_dir.name / f"group_{group_type}_{group_num}" / f"{listing_id}" / ts
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = run_dir / "cart_runs" / f"group_{group_type}_{group_num}" / f"{listing_id}" / ts
+    # Supabase-backed: no local mkdir, writes intercepted by write_file_text/safe_copy
     return out_dir
 
 # New helpers for run summary
@@ -2563,21 +2670,16 @@ def build_run_summary_entry(
     """
     def try_int_file(p: Path) -> Optional[int]:
         try:
-            if p.exists():
-                s = read_file_text(p).strip()
-                return int(s) if s.isdigit() else None
+            s = read_file_text(p).strip()
+            return int(s) if s.isdigit() else None
         except Exception:
             return None
-        return None
 
     def try_str_file(p: Path) -> Optional[str]:
         try:
-            if p.exists():
-                s = read_file_text(p)
-                return s
+            return read_file_text(p)
         except Exception:
             return None
-        return None
 
     gettingcart_exit = try_int_file(out_dir / "gettingcart_exitcode.txt")
     listing_exit = try_int_file(out_dir / "listing_curl_exitcode.txt")
@@ -2725,15 +2827,26 @@ def main():
         try:
             if group_type == "special":
                 gettingcart_path, listing_txt_path, pers_path, removingcart_path = special_group_paths(group_num)
-
+                # ... existing code ...
+                entry = build_run_summary_entry(
+                    listing_id=listing_id,
+                    group_num=group_num,
+                    group_type=group_type,
+                    run_dir=run_dir,
+                    out_dir=out_dir,
+                    source_info=source_info_map.get(listing_id),
+                    popular_info=source_info_map.get(listing_id),
+                    scarcity_title=scarcity_title,
+                    demand_value=demand_value,
+                    group_files=group_files,
+                )
+                summary_entries.append(entry)
+            else:
+                gettingcart_path, listing_txt_path, removingcart_path = group_paths(group_num)
                 # Copy originals for visibility
-                safe_copy(gettingcart_path, out_dir / f"gettingcart_original_special_group_{group_num}.txt")
-                safe_copy(listing_txt_path, out_dir / f"listing_original_special_group_{group_num}.txt")
-                safe_copy(pers_path, out_dir / f"pers_original_special_group_{group_num}.txt")
-                safe_copy(removingcart_path, out_dir / f"removingcart_original_special_group_{group_num}.txt")
-                if SPECIAL_SECOND_REMOVE_PATH.exists():
-                    safe_copy(SPECIAL_SECOND_REMOVE_PATH, out_dir / "removesecond_original.txt")
-
+                safe_copy(gettingcart_path, out_dir / f"gettingcart_original_group_{group_num}.txt")
+                safe_copy(listing_txt_path, out_dir / f"listing_original_group_{group_num}.txt")
+                safe_copy(removingcart_path, out_dir / f"removingcart_original_group_{group_num}.txt")
                 # Add to cart
                 result = run_add_to_cart(gettingcart_path, listing_id, cookie_jar, out_dir)
                 if result is None:
@@ -2741,68 +2854,14 @@ def main():
                     write_file_text(out_dir / "skipped.txt", "Skipping due to add-to-cart failure.")
                     continue
                 cart_id, inventory_id = result
-
-                # Listing request — debug curl verbatim
-                rc, c_stdout, c_stderr = execute_listing_curl_verbatim(listing_txt_path, out_dir)
-
-                if rc != 0 or not c_stdout.strip():
-                    print("Listing curl returned non-zero or empty response; attempting JSON parse anyway.")
-                scarcity_title, demand_value = parse_listing_json_and_extract(c_stdout, out_dir)
-                if demand_value is not None:
-                    print(f"Demand extracted: {demand_value}")
-                else:
-                    print("Demand not found in scarcity signal title.")
-
-                # Remove from cart — pass inventory_id and out_dir
-                run_remove_from_cart(removingcart_path, listing_id, cart_id, inventory_id, cookie_jar, out_dir)
-                # Optional second removal (if present)
-                if SPECIAL_SECOND_REMOVE_PATH.exists():
-                    run_remove_from_cart(SPECIAL_SECOND_REMOVE_PATH, listing_id, cart_id, inventory_id, cookie_jar, out_dir)
-                # NEW: Verify removal
-                ok = verify_cart_empty_post_removal(listing_txt_path, listing_id, out_dir)
-                if not ok:
-                    stop_obj = {
-                        "error": "even after removing product still in cart",
-                        "listing_id": int(listing_id),
-                        "group_type": "special",
-                        "group_num": int(group_num),
-                        "out_dir": str(out_dir),
-                        "timestamp": datetime.utcnow().isoformat() + "Z",
-                    }
-                    write_file_text(outputs_dir / "fatal_cart_residual_error.json", json.dumps(stop_obj, ensure_ascii=False, indent=2))
-                    print("ERROR: even after removing product still in cart. Aborting run.")
-                    return
-            else:
-                gettingcart_path, listing_txt_path, removingcart_path = group_paths(group_num)
-
-                # Copy originals for visibility
-                safe_copy(gettingcart_path, out_dir / f"gettingcart_original_group_{group_num}.txt")
-                safe_copy(listing_txt_path, out_dir / f"listing_original_group_{group_num}.txt")
-                safe_copy(removingcart_path, out_dir / f"removingcart_original_group_{group_num}.txt")
-
-                # Add to cart — ensure both cart_id and inventory_id are bound
-                result = run_add_to_cart(gettingcart_path, listing_id, cookie_jar, out_dir)
-                if result is None:
-                    print("Add-to-cart failed or values not parsed; skipping listing.")
-                    write_file_text(out_dir / "skipped.txt", "Skipping due to add-to-cart failure.")
-                    continue
-                cart_id, inventory_id = result
-
                 # Listing request — debug curl verbatim
                 rc, c_stdout, c_stderr = execute_listing_curl_verbatim(listing_txt_path, out_dir)
                 if rc != 0 or not c_stdout.strip():
                     print("Listing curl returned non-zero or empty response; attempting JSON parse anyway.")
-
                 scarcity_title, demand_value = parse_listing_json_and_extract(c_stdout, out_dir)
-                if demand_value is not None:
-                    print(f"Demand extracted: {demand_value}")
-                else:
-                    print("Demand not found in scarcity signal title.")
-
-                # Remove from cart — pass inventory_id and out_dir
                 # Remove from cart — pass inventory_id and out_dir
                 run_remove_from_cart(removingcart_path, listing_id, cart_id, inventory_id, cookie_jar, out_dir)
-                # NEW: Verify removal
+                # Verify removal
                 ok = verify_cart_empty_post_removal(listing_txt_path, listing_id, out_dir)
                 if not ok:
                     stop_obj = {
@@ -2816,12 +2875,10 @@ def main():
                     write_file_text(outputs_dir / "fatal_cart_residual_error.json", json.dumps(stop_obj, ensure_ascii=False, indent=2))
                     print("ERROR: even after removing product still in cart. Aborting run.")
                     return
-
-                # NEW: Build and append summary entry
                 group_files = {
-                    "gettingcart": group_paths(group_num)[0],
-                    "listing": group_paths(group_num)[1],
-                    "removingcart": group_paths(group_num)[2],
+                    "gettingcart": gettingcart_path,
+                    "listing": listing_txt_path,
+                    "removingcart": removingcart_path,
                 }
                 entry = build_run_summary_entry(
                     listing_id=listing_id,
@@ -2836,13 +2893,15 @@ def main():
                     group_files=group_files,
                 )
                 summary_entries.append(entry)
-
         except KeyboardInterrupt:
             print("\nInterrupted by user.")
             return
         except Exception as e:
             print(f"Error processing listing_id={listing_id}: {e}")
             write_file_text(out_dir / "unexpected_error.txt", f"{e}")
+        finally:
+            # Always stage, upload in background, and delete local cart_run per listing
+            schedule_background_upload_and_cleanup(out_dir, run_dir)
 
     # NEW: Write run summary JSON at the end
     summary_path = write_run_summary(
@@ -2855,18 +2914,14 @@ def main():
     )
     print(f"\nRun summary saved: {summary_path}")
 
-    # Upload tmp cart_runs to Supabase and remove local tmp copy
-    try:
-        from Helpers.supabase_helper import upload_tmp_cart_runs_and_cleanup
-    except Exception:
-        from supabase_helper import upload_tmp_cart_runs_and_cleanup
-    try:
-        up_res = upload_cart_runs_and_cleanup(run_dir, dest_prefix=f"cart_runs/{run_dir.name}")
-        print(f"Uploaded cart_runs to Supabase: {up_res.get('uploaded_count')} files, errors: {up_res.get('errors_count')}")
-        if up_res.get("cleanup_error"):
-            print(f"Cleanup warning: {up_res['cleanup_error']}")
-    except Exception as e:
-        print(f"Upload/cleanup failed: {e}")
+    # Wait for background uploads to finish to ensure Supabase is consistent
+    print("Waiting for background uploads to finish...")
+    for t in BACKGROUND_UPLOAD_THREADS:
+        try:
+            t.join()
+        except Exception:
+            pass
+    print("All uploads completed.")
 
     # Final sweep: ensure the popular-now file reflects unique IDs and correct count
     try:
@@ -2939,18 +2994,14 @@ def single_mode():
 
     print("\nSingle-mode run complete.")
 
-    # Ensure any cart_runs (if created) are uploaded and removed locally
-    try:
-        from Helpers.supabase_helper import upload_tmp_cart_runs_and_cleanup
-    except Exception:
-        from supabase_helper import upload_tmp_cart_runs_and_cleanup
-    try:
-        up_res = upload_cart_runs_and_cleanup(run_dir, dest_prefix=f"cart_runs/{run_dir.name}")
-        print(f"Uploaded cart_runs to Supabase: {up_res.get('uploaded_count')} files, errors: {up_res.get('errors_count')}")
-        if up_res.get("cleanup_error"):
-            print(f"Cleanup warning: {up_res['cleanup_error']}")
-    except Exception as e:
-        print(f"Upload/cleanup failed: {e}")
+    # Stage, upload in background, and delete local per product
+    schedule_background_upload_and_cleanup(out_dir, run_dir)
+    # Ensure upload finishes before process exit in single mode
+    for t in BACKGROUND_UPLOAD_THREADS:
+        try:
+            t.join()
+        except Exception:
+            pass
 
 # ===== Entry point =====
 
