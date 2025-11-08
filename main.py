@@ -39,6 +39,10 @@ download_progress: Dict[str, Optional[float | int | str]] = {
 }
 download_lock = threading.Lock()
 
+# Guard to ensure only one download attempt runs at a time
+download_attempt_lock = threading.Lock()
+download_attempt_in_progress = False
+
 load_dotenv()
 OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
 USERS_DIR = os.getenv("AI_USERS_DIR") or str(PROJECT_ROOT / "users")
@@ -172,149 +176,178 @@ def ensure_model_available() -> Dict[str, any]:
             status["error"] = f"Model missing at {model_path} and MODEL_URL not set"
             return status
 
-        # Robust download with simple retry/backoff
-        tmp_path = model_path.with_suffix(model_path.suffix + ".tmp")
-        # Pre-clean any stale temp file
-        try:
-            if tmp_path.exists():
-                tmp_path.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-        tries = 3
-        last_err = None
-        for i in range(1, tries + 1):
+        # Single-flight guard: ensure only one download attempt runs
+        global download_attempt_in_progress
+        with download_attempt_lock:
+            download_attempt_in_progress = True
             try:
-                # Ensure only one concurrent download attempt
-                with download_lock:
-                    # Initialize progress
-                    try:
-                        download_progress.update({
-                            "status": "downloading",
-                            "source": model_url,
-                            "destination": str(model_path),
-                            "total_bytes": None,
-                            "downloaded_bytes": 0,
-                            "percent": None,
-                            "speed_bps": None,
-                            "eta_seconds": None,
-                            "started_at": time.time(),
-                            "updated_at": time.time(),
-                            "error": None,
-                        })
-                    except Exception:
-                        pass
-                    last_logged_percent = -5.0
-                    last_logged_time = time.time()
+                # Robust download with simple retry/backoff
+                tmp_path = model_path.with_suffix(model_path.suffix + ".tmp")
+                # Pre-clean any stale temp file
+                try:
+                    if tmp_path.exists():
+                        tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
 
-                    with requests.get(model_url, stream=True, timeout=600) as r:
-                        r.raise_for_status()
-                        # Total size if known
-                        total_hdr = r.headers.get("Content-Length")
-                        total = int(total_hdr) if total_hdr and total_hdr.isdigit() else None
+                tries = 3
+                last_err = None
+                for i in range(1, tries + 1):
+                    try:
+                        # Pre-fetch expected size with HEAD (if available)
+                        expected_total = None
                         try:
-                            download_progress["total_bytes"] = total
+                            h = requests.head(model_url, timeout=30)
+                            cl = h.headers.get("Content-Length")
+                            if cl and cl.isdigit():
+                                expected_total = int(cl)
+                        except Exception:
+                            expected_total = None
+
+                        # Initialize progress
+                        try:
+                            download_progress.update({
+                                "status": "downloading",
+                                "source": model_url,
+                                "destination": str(model_path),
+                                "total_bytes": expected_total,
+                                "downloaded_bytes": 0,
+                                "percent": None,
+                                "speed_bps": None,
+                                "eta_seconds": None,
+                                "started_at": time.time(),
+                                "updated_at": time.time(),
+                                "error": None,
+                            })
                         except Exception:
                             pass
+                        last_logged_percent = -5.0
+                        last_logged_time = time.time()
 
-                        hasher = None
-                        if model_sha256:
-                            import hashlib
-                            hasher = hashlib.sha256()
+                        with requests.get(model_url, stream=True, timeout=(60, 600)) as r:
+                            r.raise_for_status()
+                            # Total size if known
+                            total_hdr = r.headers.get("Content-Length")
+                            total = expected_total or (int(total_hdr) if total_hdr and total_hdr.isdigit() else None)
+                            try:
+                                download_progress["total_bytes"] = total
+                            except Exception:
+                                pass
 
-                        downloaded = 0
-                        start_t = time.time()
-                        with open(tmp_path, "wb") as f:
-                            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
-                                if not chunk:
-                                    continue
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                if hasher:
-                                    hasher.update(chunk)
+                            hasher = None
+                            if model_sha256:
+                                import hashlib
+                                hasher = hashlib.sha256()
 
-                                # Update progress metrics
-                                now = time.time()
-                                elapsed = max(now - start_t, 1e-6)
-                                speed = downloaded / elapsed
-                                percent = (downloaded / total * 100.0) if total else None
-                                eta = ((total - downloaded) / speed) if (total and speed > 0) else None
+                            downloaded = 0
+                            start_t = time.time()
+                            with open(tmp_path, "wb") as f:
+                                for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                                    if not chunk:
+                                        continue
+                                    f.write(chunk)
+                                    downloaded += len(chunk)
+                                    if hasher:
+                                        hasher.update(chunk)
 
+                                    # Update progress metrics
+                                    now = time.time()
+                                    elapsed = max(now - start_t, 1e-6)
+                                    speed = downloaded / elapsed
+                                    percent = (downloaded / total * 100.0) if total else None
+                                    eta = ((total - downloaded) / speed) if (total and speed > 0) else None
+
+                                    try:
+                                        download_progress.update({
+                                            "downloaded_bytes": downloaded,
+                                            "speed_bps": speed,
+                                            "percent": percent,
+                                            "eta_seconds": eta,
+                                            "updated_at": now,
+                                        })
+                                    except Exception:
+                                        pass
+
+                                    # Periodic log every 5 seconds or +5% progress
+                                    should_log = (now - last_logged_time >= 5.0) or (
+                                        percent is not None and percent - last_logged_percent >= 5.0
+                                    )
+                                    if should_log:
+                                        last_logged_time = now
+                                        last_logged_percent = percent or last_logged_percent
+                                        if percent is not None and total is not None:
+                                            print(f"[Download] {percent:.1f}% ({downloaded}/{total} bytes) "
+                                                  f"speed={speed/1e6:.2f} MB/s eta={int(eta or 0)}s", flush=True)
+                                        else:
+                                            print(f"[Download] {downloaded} bytes streamed "
+                                                  f"speed={speed/1e6:.2f} MB/s", flush=True)
+
+                                # Force data to disk before verification and rename
+                                f.flush()
                                 try:
-                                    download_progress.update({
-                                        "downloaded_bytes": downloaded,
-                                        "speed_bps": speed,
-                                        "percent": percent,
-                                        "eta_seconds": eta,
-                                        "updated_at": now,
-                                    })
+                                    os.fsync(f.fileno())
                                 except Exception:
                                     pass
 
-                                # Periodic log every 5 seconds or +5% progress
-                                should_log = (now - last_logged_time >= 5.0) or (
-                                    percent is not None and percent - last_logged_percent >= 5.0
-                                )
-                                if should_log:
-                                    last_logged_time = now
-                                    last_logged_percent = percent or last_logged_percent
-                                    if percent is not None and total is not None:
-                                        print(f"[Download] {percent:.1f}% ({downloaded}/{total} bytes) "
-                                              f"speed={speed/1e6:.2f} MB/s eta={int(eta or 0)}s", flush=True)
-                                    else:
-                                        print(f"[Download] {downloaded} bytes streamed "
-                                              f"speed={speed/1e6:.2f} MB/s", flush=True)
+                        # Strict completion verification before finalize
+                        size_on_disk = tmp_path.stat().st_size if tmp_path.exists() else 0
+                        if size_on_disk != downloaded:
+                            raise RuntimeError(f"Write mismatch: expected {downloaded} bytes, got {size_on_disk}")
+                        if total is not None and downloaded != total:
+                            raise RuntimeError(f"Partial download: expected {total} bytes, got {downloaded}")
 
-                    # Checksum if provided
-                    if model_sha256:
-                        digest = hasher.hexdigest() if hasher else ""
-                        if digest.lower() != model_sha256.strip().lower():
-                            try:
-                                tmp_path.unlink(missing_ok=True)
-                            except Exception:
-                                pass
-                            raise RuntimeError(f"SHA256 mismatch: expected {model_sha256}, got {digest}")
+                        # Checksum if provided
+                        if model_sha256:
+                            digest = hasher.hexdigest() if hasher else ""
+                            if digest.lower() != model_sha256.strip().lower():
+                                try:
+                                    tmp_path.unlink(missing_ok=True)
+                                except Exception:
+                                    pass
+                                raise RuntimeError(f"SHA256 mismatch: expected {model_sha256}, got {digest}")
 
-                    # Finalize
-                    tmp_path.replace(model_path)
-                    status["downloaded"] = True
-                    status["model_present"] = True
-                    status["model_size_bytes"] = model_path.stat().st_size
+                        # Finalize atomically
+                        tmp_path.replace(model_path)
+                        status["downloaded"] = True
+                        status["model_present"] = True
+                        status["model_size_bytes"] = model_path.stat().st_size
 
-                    try:
-                        download_progress.update({
-                            "status": "complete",
-                            "destination": str(model_path),
-                            "total_bytes": status["model_size_bytes"],
-                            "downloaded_bytes": status["model_size_bytes"],
-                            "percent": 100.0,
-                            "eta_seconds": 0.0,
-                            "updated_at": time.time(),
-                        })
-                    except Exception:
-                        pass
-                    return status
-            except Exception as e:
-                last_err = e
-                # Clean tmp on failure
-                try:
-                    tmp_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                backoff = 2 ** (i - 1)
-                try:
-                    download_progress.update({
-                        "status": "error",
-                        "error": str(e),
-                        "updated_at": time.time(),
-                    })
-                except Exception:
-                    pass
-                print(f"[Startup] Download attempt {i}/{tries} failed: {e}. Retrying in {backoff}s...", flush=True)
-                time.sleep(backoff)
+                        try:
+                            download_progress.update({
+                                "status": "complete",
+                                "destination": str(model_path),
+                                "total_bytes": status["model_size_bytes"],
+                                "downloaded_bytes": status["model_size_bytes"],
+                                "percent": 100.0,
+                                "eta_seconds": 0.0,
+                                "updated_at": time.time(),
+                            })
+                        except Exception:
+                            pass
+                        return status
+                    except Exception as e:
+                        last_err = e
+                        # Clean tmp on failure
+                        try:
+                            tmp_path.unlink(missing_ok=True)
+                        except Exception:
+                            pass
+                        backoff = 2 ** (i - 1)
+                        try:
+                            download_progress.update({
+                                "status": "error",
+                                "error": str(e),
+                                "updated_at": time.time(),
+                            })
+                        except Exception:
+                            pass
+                        print(f"[Startup] Download attempt {i}/{tries} failed: {e}. Retrying in {backoff}s...", flush=True)
+                        time.sleep(backoff)
 
-        status["error"] = f"Download failed after {tries} attempts: {last_err}"
-        return status
+                status["error"] = f"Download failed after {tries} attempts: {last_err}"
+                return status
+            finally:
+                download_attempt_in_progress = False
     except Exception as e:
         status["error"] = str(e)
         return status

@@ -14,6 +14,7 @@ import requests
 import html as html_lib
 from html.parser import HTMLParser
 import threading
+import os
 
 try:
     from Helpers.supabase_helper import (
