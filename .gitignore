@@ -7,9 +7,6 @@ __pycache__/
 outputs/
 users/
 
-# Secrets
-.env
-
 # Large model artifacts
 gemma-3n-E4B-it-GGUF/
 *.gguf
@@ -18,6 +15,3 @@ gemma-3n-E4B-it-GGUF/
 .DS_Store
 
 data/
-Helpers/test.py
-Helpers/second_demand_extractor.py
-final_aayan_pdf_20251107-144210.json
