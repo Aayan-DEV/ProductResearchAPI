@@ -13,67 +13,32 @@ import time
 import requests
 import html as html_lib
 from html.parser import HTMLParser
-import threading
-import os
-
-try:
-    from Helpers.supabase_helper import (
-        upload_cart_runs_and_cleanup,
-        upload_bytes,
-        upload_file,
-        public_url,
-        get_bucket_name,
-        upload_tmp_cart_runs_and_cleanup,
-        upload_directory,
-    )
-except Exception:
-    from supabase_helper import (
-        upload_cart_runs_and_cleanup,
-        upload_bytes,
-        upload_file,
-        public_url,
-        get_bucket_name,
-        upload_tmp_cart_runs_and_cleanup,
-        upload_directory,
-    )
 
 # ===== Paths and constants =====
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RUNS_ROOT = PROJECT_ROOT / "outputs"
+RUNS_ROOT = PROJECT_ROOT / "outputs" / "cart_runs"
 TXT_FILES_ROOT = PROJECT_ROOT / "EtoRequests" / "Cart_sequence" / "txt_files"
 SPECIAL_ROOT = TXT_FILES_ROOT / "special"
 SPECIAL_SECOND_REMOVE_PATH = SPECIAL_ROOT / "1" / "removesecond.txt"  # fixed path per user request
 DEFAULT_COOKIE_JAR = PROJECT_ROOT / "outputs" / ".etsy_cookie_jar.txt"
 
-try:
-    from Helpers.supabase_helper import upload_cart_runs_and_cleanup
-except Exception:
-    from supabase_helper import upload_cart_runs_and_cleanup
-
 # ===== Basic utils =====
 
 def read_file_text(p: Path) -> str:
-    # Local-first reads for performance; Supabase is handled by background uploader
+    if not p.exists():
+        raise FileNotFoundError(f"Missing file: {p}")
     try:
-        if not p.exists():
-            raise FileNotFoundError(f"Missing file: {p}")
-        try:
-            return p.read_text(encoding="utf-8")
-        except Exception:
-            with open(p, "r", encoding="utf-8", errors="replace") as f:
-                return f.read()
+        return p.read_text(encoding="utf-8")
     except Exception:
         with open(p, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
 
 def write_file_text(p: Path, content: str) -> None:
-    # Local-first writes for performance
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(content, encoding="utf-8")
 
 def safe_copy(src: Path, dst: Path) -> None:
-    # Local-first copies for performance
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
@@ -85,125 +50,10 @@ def rm_file_if_exists(p: Path) -> None:
         pass
 
 def ensure_dir(p: Path) -> None:
-    # Local directories are created; background upload handles Supabase
     p.mkdir(parents=True, exist_ok=True)
 
 def now_ts_compact() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-
-# Background upload scheduler for per-listing cart_runs
-BACKGROUND_UPLOAD_THREADS: List[threading.Thread] = []
-
-def schedule_background_upload_and_cleanup(out_dir: Path, run_dir: Path, progress_cb: Optional[callable] = None, user_id: Optional[str] = None) -> None:
-    try:
-        if not out_dir.exists() or "cart_runs" not in out_dir.parts:
-            return
-
-        # Derive relative path under cart_runs to reconstruct in staging
-        try:
-            idx_cr = out_dir.parts.index("cart_runs")
-        except ValueError:
-            return
-        rel_parts = out_dir.parts[idx_cr + 1:]
-        listing_id_str = rel_parts[1] if len(rel_parts) >= 2 else "listing"
-
-        # Emit pre-stage progress
-        try:
-            if progress_cb:
-                progress_cb({
-                    "stage": "upload_cart_runs",
-                    "user_id": user_id or Path.home().name,
-                    "listing_id": int(listing_id_str) if str(listing_id_str).isdigit() else None,
-                    "message": f"Staging cart_runs for upload to outputs/{run_dir.name}/cart_runs",
-                })
-        except Exception:
-            pass
-
-        # Use a unique tmp root per listing to avoid staging races
-        tmp_root_name = f"{run_dir.name}__{listing_id_str}__{now_ts_compact()}"
-        staging_root = Path("/tmp/ai_keywords_cart_runs") / tmp_root_name
-        # Copy to staging without adding an extra 'cart_runs' layer
-        stage_target = staging_root / Path(*rel_parts)
-
-        ensure_dir(stage_target.parent)
-        # Copy entire listing out_dir to staging
-        shutil.copytree(out_dir, stage_target, dirs_exist_ok=True)
-
-        dest_prefix = f"outputs/{run_dir.name}/cart_runs"
-
-        # Start background upload to Supabase under outputs/<run_dir.name>/cart_runs
-        def _worker():
-            try:
-                res = upload_tmp_cart_runs_and_cleanup(
-                    tmp_root_name,
-                    dest_prefix=dest_prefix,
-                )
-                # Emit success progress
-                try:
-                    if progress_cb:
-                        uploaded_count = (res or {}).get("uploaded_count")
-                        errors_count = (res or {}).get("errors_count")
-                        progress_cb({
-                            "stage": "upload_cart_runs",
-                            "user_id": user_id or Path.home().name,
-                            "listing_id": int(listing_id_str) if str(listing_id_str).isdigit() else None,
-                            "message": f"Uploaded cart_runs to {dest_prefix} (uploaded={uploaded_count or 'n/a'} errors={errors_count or 0})",
-                        })
-                except Exception:
-                    pass
-            except Exception as e:
-                print(f"Background upload failed for {out_dir}: {e}")
-                # Emit failure progress
-                try:
-                    if progress_cb:
-                        progress_cb({
-                            "stage": "upload_cart_runs_error",
-                            "user_id": user_id or Path.home().name,
-                            "listing_id": int(listing_id_str) if str(listing_id_str).isdigit() else None,
-                            "message": f"Upload failed: {e}",
-                        })
-                except Exception:
-                    pass
-
-        t = threading.Thread(target=_worker, daemon=True)
-        t.start()
-        BACKGROUND_UPLOAD_THREADS.append(t)
-
-        # Remove local out_dir immediately after staging
-        try:
-            shutil.rmtree(out_dir, ignore_errors=True)
-        except Exception:
-            pass
-
-    except Exception as e:
-        print(f"Failed to schedule upload for {out_dir}: {e}")
-
-def _supabase_cart_runs_obj_path(path: Path) -> Optional[str]:
-    parts = path.parts
-    if "cart_runs" not in parts:
-        return None
-    try:
-        idx_cr = parts.index("cart_runs")
-    except ValueError:
-        return None
-
-    run_name = None
-    if "outputs" in parts:
-        try:
-            idx_out = parts.index("outputs")
-            if idx_out + 1 < idx_cr:
-                run_name = parts[idx_out + 1]
-        except ValueError:
-            pass
-    if run_name is None and idx_cr - 1 >= 0:
-        run_name = parts[idx_cr - 1]
-
-    rel_parts = parts[idx_cr + 1:]
-    prefix = ["outputs"]
-    if run_name:
-        prefix.append(run_name)
-    prefix.append("cart_runs")
-    return "/".join(prefix + list(rel_parts)).strip("/")
 
 # ===== UI helpers =====
 
@@ -618,16 +468,6 @@ def inject_cookie_jar(cmd: str, jar_path: Path, read: bool, write: bool) -> str:
         flags.append(f"-b '{jar_path}'")
     if write:
         flags.append(f"-c '{jar_path}'")
-
-    # If reading from a missing jar and ETSY_COOKIE_HEADER is provided, inject header too
-    try:
-        jar_missing = read and (not jar_path.exists())
-    except Exception:
-        jar_missing = False
-    cookie_hdr = os.getenv("ETSY_COOKIE_HEADER", "")
-    if jar_missing and cookie_hdr:
-        flags.append(f"-H 'Cookie: {cookie_hdr}'")
-
     if not flags:
         return cmd
     pattern = re.compile(r"\bcurl\b(?:\s+--location)?")
@@ -640,12 +480,6 @@ def normalize_curl_multiline(content: str) -> str:
 
 def run_shell_command(cmd: str, timeout: int = 120) -> Tuple[int, str, str]:
     cmd_line = normalize_curl_multiline(cmd)
-    # Ensure curl has sensible flags everywhere (including listing debug path)
-    cmd_line = add_location_flag_to_curl(cmd_line)
-    # Add --fail-with-body to surface HTTP >=400 as non-zero exit
-    if re.search(r"(^|\s)--fail-with-body(\s|$)", cmd_line) is None:
-        cmd_line = re.sub(r"\bcurl\b", "curl --fail-with-body", cmd_line, count=1)
-
     args = shlex.split(cmd_line)
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -657,11 +491,6 @@ def run_shell_command(cmd: str, timeout: int = 120) -> Tuple[int, str, str]:
         except Exception:
             pass
         return 124, "", "TimeoutExpired"
-    except FileNotFoundError as e:
-        missing_prog = args[0] if args else "unknown"
-        if missing_prog == "curl":
-            return 127, "", "curl not found. Install curl or ensure PATH. On Railway, ensure Dockerfile installs curl."
-        return 127, "", f"{missing_prog} not found: {e}"
     except Exception as e:
         return 1, "", f"{e}"
 
@@ -1022,7 +851,7 @@ def extract_variations_clean_json(out_dir: Path) -> Optional[Path]:
 
     out_json = out_dir / "variations_cleaned.json"
     try:
-        write_file_text(out_json, json.dumps({"variations": variations}, ensure_ascii=False, indent=2))
+        out_json.write_text(json.dumps({"variations": variations}, ensure_ascii=False, indent=2), encoding="utf-8")
     except Exception as e:
         write_file_text(out_dir / "variations_clean_error.txt", str(e))
         return None
@@ -1197,8 +1026,6 @@ def process_listing_demand(listing_id: int, run_dir: Path, outputs_dir: Path) ->
     # Step 2: listing — modify listing/<id>, run, and extract demand/signal
     try:
         mod_listing = modify_listing_command(read_file_text(listing_path), int(listing_id))
-        # Inject cookie jar and ensure --location so redirects are followed
-        mod_listing = inject_cookie_jar(mod_listing, DEFAULT_COOKIE_JAR, read=True, write=True)
         write_file_text(out_base / "listing_modified_curl.txt", mod_listing)
         write_file_text(out_base / "listing_sent_curl.txt", mod_listing)
         code, out, err = run_shell_command(mod_listing)
@@ -1627,12 +1454,6 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                             f"  remaining_after: {remaining_after}\n"
                             f"  processed_total: {len(processed)}"
                         )
-
-                        # Schedule background upload of per-listing cart_runs directory and cleanup
-                        try:
-                            schedule_background_upload_and_cleanup(out_dir, Path(run_dir), progress_cb=progress_cb, user_id=user_label)
-                        except Exception:
-                            pass
                     except Exception as e:
                         err_path = Path(outputs_dir) / f"queue_error_listing_{lid_i}.txt"
                         write_file_text(err_path, str(e))
@@ -1642,42 +1463,10 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                             f"  listing_id: {lid_i}\n"
                             f"  error: {e}"
                         )
-                        # Emit a user-facing error progress snapshot
-                        try:
-                            if progress_cb:
-                                rem = sum(
-                                    1 for jt in items
-                                    if isinstance(jt, dict)
-                                    and str(jt.get("listing_id", "")).isdigit()
-                                    and int(str(jt.get("listing_id"))) not in processed
-                                )
-                                progress_cb({
-                                    "stage": "demand_extraction_error",
-                                    "user_id": user_label,
-                                    "remaining": rem,
-                                    "total": total_in_source,
-                                    "listing_id": lid_i,
-                                    "message": f"Error processing listing_id={lid_i}: {e}",
-                                })
-                        except Exception:
-                            pass
                         # NEW: Fatal stop on residual cart error
                         if "still in cart" in str(e):
                             mark_second_queue_error(second_queue_path, str(e), lid_i)
                             print("Stopping queue due to residual cart verification failure.")
-                            # Also emit a fatal error progress event
-                            try:
-                                if progress_cb:
-                                    progress_cb({
-                                        "stage": "demand_extraction_error",
-                                        "user_id": user_label,
-                                        "remaining": rem if 'rem' in locals() else None,
-                                        "total": total_in_source,
-                                        "listing_id": lid_i,
-                                        "message": "Fatal: residual cart after removal, stopping.",
-                                    })
-                            except Exception:
-                                pass
                             break
 
                 # Exit when queue is completed and all items are processed
@@ -1904,10 +1693,11 @@ def extract_scarcity_signal_title_from_json(obj: dict) -> Optional[str]:
                     return t
 
     # Known nested containers to inspect
-    for container_key in ("data", "cart", "payload", "event_payload", "response", "meta"):
+    for container_key in ("data", "cart", "payload", "event_payload", "response"):
         container = obj.get(container_key)
         if not isinstance(container, dict):
             continue
+
         # Direct key
         t = maybe_title(container.get("scarcity_signal_title"))
         if t:
@@ -1975,9 +1765,10 @@ def parse_demand_from_scarcity_title(title: str) -> Optional[int]:
         return None
 
     patterns = [
-        r"In\s+\d+\s+carts?,\s*(\d+)\s+(?:bought|sold|orders?|purchases?|purchased|buyers?)\s+in\s+(?:the\s+)?(?:past|last)\s+24\s+hours",
-        r"(\d+)\s+(?:bought|sold|orders?|purchases?|purchased|buyers?)\s+in\s+(?:the\s+)?(?:past|last)\s+24\s+hours",
-        r"(\d+)\s+(?:sold|orders?)\s+today",
+        r"In\s+\d+\s+carts?,\s*(\d+)\s+bought\s+in\s+the\s+past\s+24\s+hours",
+        r"In\s+\d+\s+carts?,\s*(\d+)\s+sold\s+in\s+the\s+past\s+24\s+hours",
+        r"(\d+)\s+bought\s+in\s+the\s+past\s+24\s+hours",
+        r"(\d+)\s+sold\s+in\s+the\s+past\s+24\s+hours",
     ]
     for pat in patterns:
         m = re.search(pat, t, flags=re.IGNORECASE)
@@ -1986,14 +1777,6 @@ def parse_demand_from_scarcity_title(title: str) -> Optional[int]:
                 return int(m.group(1))
             except Exception:
                 pass
-    # Fallback: if the phrase mentions sales/purchases, prefer the last number (e.g., 'In 39 carts, 3 bought...')
-    try:
-        if re.search(r"\b(sold|bought|orders?|purchases?|purchased|buyers?)\b", t, flags=re.IGNORECASE):
-            nums = re.findall(r"\d+", t)
-            if nums:
-                return int(nums[-1])
-    except Exception:
-        pass
     return None
 
 # ===== Output organization =====
@@ -2010,9 +1793,9 @@ def ensure_listing_output_dir(run_dir: Path, listing_id: int) -> Path:
     return base
 
 def ensure_run_output_for_group(run_dir: Path, listing_id: int, group_num: int, group_type: str) -> Path:
+    # Create only one timestamped out_dir; consumers must reuse this path
     base = run_dir / "cart_runs" / f"group_{group_type}_{group_num}" / str(listing_id) / now_ts_compact()
-    # Ensure local dir exists for fast local-first writes and later staging
-    ensure_dir(base)
+    base.mkdir(parents=True, exist_ok=True)
     return base
 
 # Helper: decide if a listing is personalizable using the latest popular JSON
@@ -2056,9 +1839,6 @@ def resolve_cart_sequence_paths(is_personalizable: bool) -> Dict[str, Optional[P
 def save_combined_run_json(out_dir: Path, summary: Dict, outputs_dir: Path) -> Path:
     def read_if_exists(p: Path) -> Optional[str]:
         try:
-            # Attempt Supabase read for cart_runs unconditionally; tolerate missing
-            if "cart_runs" in p.parts:
-                return read_file_text(p)
             return p.read_text(encoding="utf-8") if p.exists() else None
         except Exception:
             return None
@@ -2226,10 +2006,11 @@ def parse_listing_json_and_extract(stdout: str, out_dir: Path) -> Tuple[Optional
     return scarcity_title, demand_value
 
 # NEW: Post-removal verification helpers
-def run_listing_post_remove_check(listing_txt_path: Path, out_dir: Path, jar_path: Path) -> Tuple[int, str, str]:
+def run_listing_post_remove_check(listing_txt_path: Path, out_dir: Path) -> Tuple[int, str, str]:
     original = read_file_text(listing_txt_path)
     write_file_text(out_dir / "verify_post_remove_listing_original.txt", original)
 
+    # NEW: inject cookie jar so verification uses the same session (post-remove)
     cmd_jar = inject_cookie_jar(original, jar_path, read=True, write=True)
     write_file_text(out_dir / "verify_post_remove_listing_sent_with_cookiejar.txt", cmd_jar)
 
@@ -2700,7 +2481,7 @@ def load_listing_ids_from_popular(popular_path: Path, count: int) -> List[int]:
 def ensure_output_dirs(run_dir: Path, listing_id: int, group_num: int, group_type: str) -> Path:
     ts = now_ts_compact()
     out_dir = run_dir / "cart_runs" / f"group_{group_type}_{group_num}" / f"{listing_id}" / ts
-    # Supabase-backed: no local mkdir, writes intercepted by write_file_text/safe_copy
+    out_dir.mkdir(parents=True, exist_ok=True)
     return out_dir
 
 # New helpers for run summary
@@ -2777,16 +2558,21 @@ def build_run_summary_entry(
     """
     def try_int_file(p: Path) -> Optional[int]:
         try:
-            s = read_file_text(p).strip()
-            return int(s) if s.isdigit() else None
+            if p.exists():
+                s = read_file_text(p).strip()
+                return int(s) if s.isdigit() else None
         except Exception:
             return None
+        return None
 
     def try_str_file(p: Path) -> Optional[str]:
         try:
-            return read_file_text(p)
+            if p.exists():
+                s = read_file_text(p)
+                return s
         except Exception:
             return None
+        return None
 
     gettingcart_exit = try_int_file(out_dir / "gettingcart_exitcode.txt")
     listing_exit = try_int_file(out_dir / "listing_curl_exitcode.txt")
@@ -2878,96 +2664,184 @@ def write_run_summary(
 def main():
     print_banner()
 
-    # Pick a run and resolve paths/artifacts
+    # Choose a run
     outputs_root = PROJECT_ROOT / "outputs"
     run_info = select_run_and_get_paths(outputs_root)
-
     run_dir: Path = run_info["run_dir"]
     outputs_dir: Path = run_info["outputs_dir"]
-    demand_extracted_dir: Path = run_info["demand_extracted_dir"]
-    popular_json_path: Path = run_info.get("popular_json_path") or POPULAR_JSON_PATH_DEFAULT
+    popular_json_path: Path = run_info["popular_json_path"] or POPULAR_JSON_PATH_DEFAULT
 
-    # Ask how many listings to process
+    # Choose how many listings from popular to process
     try:
         raw = input("How many listings to process from popular? [default 5]: ").strip()
         count = int(raw) if raw else 5
     except Exception:
         count = 5
 
-    # Resolve listing_ids from the popular listings file
     listing_ids = load_listing_ids_from_popular(popular_json_path, count)
     print(f"\nProcessing {len(listing_ids)} listings...")
 
-    # For summary embedding (title/source fields), load the source info map
+    # NEW: Load full listing objects for summary embedding
     source_info_map = load_source_listing_info_map(popular_json_path)
+
+    normal_groups = find_group_numbers(TXT_FILES_ROOT)
+    special_groups = find_special_group_numbers(SPECIAL_ROOT)
+
+    if not normal_groups and not special_groups:
+        print("No groups found under txt_files. Please ensure required curl files exist.")
+        return
+
+    # Assign alternating normal/special groups if both exist
+    assignments = []
+    for i, lid in enumerate(listing_ids, start=1):
+        if special_groups:
+            gt = "special" if i % 2 == 0 else "normal"
+        else:
+            gt = "normal"
+        if gt == "normal":
+            gnum = normal_groups[i % len(normal_groups)]
+        else:
+            gnum = special_groups[i % len(special_groups)]
+        assignments.append((lid, gnum, gt))
+
+    cookie_jar = DEFAULT_COOKIE_JAR
 
     summary_entries: List[dict] = []
 
-    for idx, listing_id in enumerate(listing_ids, start=1):
+    for i, (listing_id, group_num, group_type) in enumerate(assignments, start=1):
         print("\n" + "-" * 80)
-        print(f"[{idx}/{len(listing_ids)}] Listing {listing_id}")
+        print(f"[{i}/{len(assignments)}] Listing {listing_id} via group {group_type} #{group_num}")
+        out_dir = ensure_run_output_for_group(run_dir, listing_id, group_num, group_type)
 
-        summary = None
+        # Always clear cache before the flow
+        clear_cookie_jar(cookie_jar)
+        write_file_text(out_dir / "cookie_jar_cleared.txt", f"Cleared cache at start for listing_id={listing_id}")
+
         try:
-            # Run the full demand pipeline (add → listing → parse → variations → remove → verify)
-            summary = process_listing_demand(int(listing_id), run_dir, outputs_dir)
+            if group_type == "special":
+                gettingcart_path, listing_txt_path, pers_path, removingcart_path = special_group_paths(group_num)
 
-            # Unify listing JSON filename for downstream consumers:
-            # If listing_stdout.json exists (from process_listing_demand), mirror it to listing_curl_stdout.json
-            out_dir = Path(summary.get("out_dir") or ensure_run_output_for_group(run_dir, int(listing_id), 1, summary.get("group_type") or "non_personalise"))
-            lstdout_json = out_dir / "listing_stdout.json"
-            lcurl_json = out_dir / "listing_curl_stdout.json"
-            try:
-                if lstdout_json.exists() and not lcurl_json.exists():
-                    write_file_text(lcurl_json, read_file_text(lstdout_json))
-            except Exception:
-                pass
+                # Copy originals for visibility
+                safe_copy(gettingcart_path, out_dir / f"gettingcart_original_special_group_{group_num}.txt")
+                safe_copy(listing_txt_path, out_dir / f"listing_original_special_group_{group_num}.txt")
+                safe_copy(pers_path, out_dir / f"pers_original_special_group_{group_num}.txt")
+                safe_copy(removingcart_path, out_dir / f"removingcart_original_special_group_{group_num}.txt")
+                if SPECIAL_SECOND_REMOVE_PATH.exists():
+                    safe_copy(SPECIAL_SECOND_REMOVE_PATH, out_dir / "removesecond_original.txt")
 
-            # Build summary entry object aligned with the run_summary layout
-            group_files = {
-                "gettingcart": out_dir / "gettingcart_cmd.txt",
-                "listing": out_dir / "listing_cmd.txt",
-                "removingcart": out_dir / "removingcart_cmd_template.txt",
-            }
-            entry = build_run_summary_entry(
-                listing_id=int(listing_id),
-                group_num=int(summary.get("group_num") or 1),
-                group_type=str(summary.get("group_type") or "non_personalise"),
-                run_dir=run_dir,
-                out_dir=out_dir,
-                source_info=source_info_map.get(int(listing_id)),
-                popular_info=source_info_map.get(int(listing_id)),
-                scarcity_title=summary.get("scarcity_title"),
-                demand_value=summary.get("demand_value"),
-                group_files=group_files,
-            )
-            summary_entries.append(entry)
+                # Add to cart
+                result = run_add_to_cart(gettingcart_path, listing_id, cookie_jar, out_dir)
+                if result is None:
+                    print("Add-to-cart failed or values not parsed; skipping listing.")
+                    write_file_text(out_dir / "skipped.txt", "Skipping due to add-to-cart failure.")
+                    continue
+                cart_id, inventory_id = result
 
-            # Progress info
-            print(f"→ group {entry['group_type']} #{entry['group']}; demand={entry['demand']} title={entry.get('scarcity_signal_title') or 'n/a'}")
+                # Listing request — debug curl verbatim
+                rc, c_stdout, c_stderr = execute_listing_curl_verbatim(listing_txt_path, out_dir)
+
+                if rc != 0 or not c_stdout.strip():
+                    print("Listing curl returned non-zero or empty response; attempting JSON parse anyway.")
+                scarcity_title, demand_value = parse_listing_json_and_extract(c_stdout, out_dir)
+                if demand_value is not None:
+                    print(f"Demand extracted: {demand_value}")
+                else:
+                    print("Demand not found in scarcity signal title.")
+
+                # Remove from cart — pass inventory_id and out_dir
+                run_remove_from_cart(removingcart_path, listing_id, cart_id, inventory_id, cookie_jar, out_dir)
+                # Optional second removal (if present)
+                if SPECIAL_SECOND_REMOVE_PATH.exists():
+                    run_remove_from_cart(SPECIAL_SECOND_REMOVE_PATH, listing_id, cart_id, inventory_id, cookie_jar, out_dir)
+                # NEW: Verify removal
+                ok = verify_cart_empty_post_removal(listing_txt_path, listing_id, out_dir)
+                if not ok:
+                    stop_obj = {
+                        "error": "even after removing product still in cart",
+                        "listing_id": int(listing_id),
+                        "group_type": "special",
+                        "group_num": int(group_num),
+                        "out_dir": str(out_dir),
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }
+                    write_file_text(outputs_dir / "fatal_cart_residual_error.json", json.dumps(stop_obj, ensure_ascii=False, indent=2))
+                    print("ERROR: even after removing product still in cart. Aborting run.")
+                    return
+            else:
+                gettingcart_path, listing_txt_path, removingcart_path = group_paths(group_num)
+
+                # Copy originals for visibility
+                safe_copy(gettingcart_path, out_dir / f"gettingcart_original_group_{group_num}.txt")
+                safe_copy(listing_txt_path, out_dir / f"listing_original_group_{group_num}.txt")
+                safe_copy(removingcart_path, out_dir / f"removingcart_original_group_{group_num}.txt")
+
+                # Add to cart — ensure both cart_id and inventory_id are bound
+                result = run_add_to_cart(gettingcart_path, listing_id, cookie_jar, out_dir)
+                if result is None:
+                    print("Add-to-cart failed or values not parsed; skipping listing.")
+                    write_file_text(out_dir / "skipped.txt", "Skipping due to add-to-cart failure.")
+                    continue
+                cart_id, inventory_id = result
+
+                # Listing request — debug curl verbatim
+                rc, c_stdout, c_stderr = execute_listing_curl_verbatim(listing_txt_path, out_dir)
+                if rc != 0 or not c_stdout.strip():
+                    print("Listing curl returned non-zero or empty response; attempting JSON parse anyway.")
+
+                scarcity_title, demand_value = parse_listing_json_and_extract(c_stdout, out_dir)
+                if demand_value is not None:
+                    print(f"Demand extracted: {demand_value}")
+                else:
+                    print("Demand not found in scarcity signal title.")
+
+                # Remove from cart — pass inventory_id and out_dir
+                # Remove from cart — pass inventory_id and out_dir
+                run_remove_from_cart(removingcart_path, listing_id, cart_id, inventory_id, cookie_jar, out_dir)
+                # NEW: Verify removal
+                ok = verify_cart_empty_post_removal(listing_txt_path, listing_id, out_dir)
+                if not ok:
+                    stop_obj = {
+                        "error": "even after removing product still in cart",
+                        "listing_id": int(listing_id),
+                        "group_type": "normal",
+                        "group_num": int(group_num),
+                        "out_dir": str(out_dir),
+                        "timestamp": datetime.utcnow().isoformat() + "Z",
+                    }
+                    write_file_text(outputs_dir / "fatal_cart_residual_error.json", json.dumps(stop_obj, ensure_ascii=False, indent=2))
+                    print("ERROR: even after removing product still in cart. Aborting run.")
+                    return
+
+                # NEW: Build and append summary entry
+                group_files = {
+                    "gettingcart": group_paths(group_num)[0],
+                    "listing": group_paths(group_num)[1],
+                    "removingcart": group_paths(group_num)[2],
+                }
+                entry = build_run_summary_entry(
+                    listing_id=listing_id,
+                    group_num=group_num,
+                    group_type=group_type,
+                    run_dir=run_dir,
+                    out_dir=out_dir,
+                    source_info=source_info_map.get(listing_id),
+                    popular_info=source_info_map.get(listing_id),
+                    scarcity_title=scarcity_title,
+                    demand_value=demand_value,
+                    group_files=group_files,
+                )
+                summary_entries.append(entry)
 
         except KeyboardInterrupt:
             print("\nInterrupted by user.")
-            break
-        except RuntimeError as e:
-            # process_listing_demand raises when removal verification fails (fatal)
-            print(f"Fatal error on listing {listing_id}: {e}")
-            break
+            return
         except Exception as e:
-            # Unexpected error; record and continue
-            out_dir_fallback = ensure_run_output_for_group(run_dir, int(listing_id), 1, "error")
-            write_file_text(out_dir_fallback / "unexpected_error.txt", str(e))
-        finally:
-            # Stage, upload cart_runs in background, and delete local per listing
-            try:
-                if summary and summary.get("out_dir"):
-                    schedule_background_upload_and_cleanup(Path(summary["out_dir"]), run_dir)
-            except Exception:
-                pass
+            print(f"Error processing listing_id={listing_id}: {e}")
+            write_file_text(out_dir / "unexpected_error.txt", f"{e}")
 
-    # Write run summary JSON at the end
+    # NEW: Write run summary JSON at the end
     summary_path = write_run_summary(
-        demand_extracted_dir=demand_extracted_dir,
+        demand_extracted_dir=run_info["demand_extracted_dir"],
         requested_count=count,
         run_dir=run_dir,
         source_choice="popular",
@@ -2975,35 +2849,6 @@ def main():
         entries=summary_entries,
     )
     print(f"\nRun summary saved: {summary_path}")
-
-    # Upload the 'demand extracted' directory to Supabase for persistence/verification
-    try:
-        upload_res = upload_directory(
-            None,  # use default bucket
-            str(demand_extracted_dir),
-            dest_prefix=f"outputs/{run_dir.name}/demand_extracted",
-        )
-        write_file_text(demand_extracted_dir / "upload_result.json", json.dumps(upload_res, ensure_ascii=False, indent=2))
-        print(f"Uploaded demand extracted: {upload_res.get('uploaded_count', 0)} files, errors: {upload_res.get('errors_count', 0)}")
-        # Show one sample public URL for quick validation
-        try:
-            sample = next((x for x in upload_res.get("uploaded", []) if "public_url" in x), None)
-            if sample:
-                print(f"Sample public URL: {sample['public_url']}")
-        except Exception:
-            pass
-    except Exception as e:
-        print(f"Demand extracted upload error: {e}")
-
-    # Wait for background uploads to finish to ensure Supabase is consistent
-    print("Waiting for background uploads to finish...")
-    for t in BACKGROUND_UPLOAD_THREADS:
-        try:
-            t.join()
-        except Exception:
-            pass
-    print("All uploads completed.")
-
     # Final sweep: ensure the popular-now file reflects unique IDs and correct count
     try:
         normalize_popular_listings_file(popular_json_path)
@@ -3074,15 +2919,6 @@ def single_mode():
     run_remove_from_cart(removingcart_path, listing_id, cart_id, inventory_id, DEFAULT_COOKIE_JAR, out_dir)
 
     print("\nSingle-mode run complete.")
-
-    # Stage, upload in background, and delete local per product
-    schedule_background_upload_and_cleanup(out_dir, run_dir)
-    # Ensure upload finishes before process exit in single mode
-    for t in BACKGROUND_UPLOAD_THREADS:
-        try:
-            t.join()
-        except Exception:
-            pass
 
 # ===== Entry point =====
 

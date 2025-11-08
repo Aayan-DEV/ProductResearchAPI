@@ -3,7 +3,6 @@ import mimetypes
 import pathlib
 import requests
 from typing import Optional, Dict, List
-import shutil
 
 BUCKET_NAME = os.getenv("SUPABASE_BUCKET_NAME") or "Product_Research_Outputs"
 
@@ -137,73 +136,3 @@ def upload_directory(
         "uploaded": uploaded,
         "errors": errors,
     }
-
-def upload_cart_runs_and_cleanup(
-    run_dir: str | os.PathLike,
-    dest_prefix: Optional[str] = None,
-    bucket_name: Optional[str] = None,
-    public: bool = True,
-    upsert: bool = True,
-) -> Dict:
-    """
-    Upload the tmp 'cart_runs' subtree for a given run, then delete it locally.
-    - Reads from '/tmp/ai_keywords_cart_runs/{basename(run_dir)}'
-    - Uploads to 'cart_runs/{basename(run_dir)}' in Supabase (by default)
-    """
-    run_dir_name = pathlib.Path(run_dir).name
-    src_dir = pathlib.Path("/tmp/ai_keywords_cart_runs") / run_dir_name
-    if not src_dir.exists():
-      return {
-          "uploaded_count": 0,
-          "errors_count": 0,
-          "uploaded": [],
-          "errors": [],
-          "skipped": True,
-          "reason": "tmp cart_runs not found",
-          "src_dir": src_dir.as_posix(),
-      }
-
-    dest = dest_prefix or f"cart_runs/{run_dir_name}"
-    ensure_bucket(bucket_name or get_bucket_name(), public=public)
-    res = upload_directory(bucket_name, str(src_dir), dest_prefix=dest, public=public, upsert=upsert)
-
-    try:
-        shutil.rmtree(src_dir)
-    except Exception as e:
-        res["cleanup_error"] = str(e)
-
-    res["src_dir"] = src_dir.as_posix()
-    res["dest_prefix"] = dest
-    return res
-
-def upload_tmp_cart_runs_and_cleanup(
-    run_dir_name: str,
-    dest_prefix: Optional[str] = None,
-    bucket_name: Optional[str] = None,
-    public: bool = True,
-    upsert: bool = True,
-) -> Dict:
-    src_root = pathlib.Path("/tmp/ai_keywords_cart_runs") / run_dir_name
-    if not src_root.exists():
-        return {
-            "uploaded_count": 0,
-            "errors_count": 0,
-            "uploaded": [],
-            "errors": [],
-            "skipped": True,
-            "reason": "tmp cart_runs not found",
-            "src_dir": src_root.as_posix(),
-        }
-
-    dest = dest_prefix or f"cart_runs/{run_dir_name}"
-    ensure_bucket(bucket_name or get_bucket_name(), public=public)
-    res = upload_directory(bucket_name, str(src_root), dest_prefix=dest, public=public, upsert=upsert)
-
-    try:
-        shutil.rmtree(src_root)
-    except Exception as e:
-        res["cleanup_error"] = str(e)
-
-    res["src_dir"] = src_root.as_posix()
-    res["dest_prefix"] = dest
-    return res

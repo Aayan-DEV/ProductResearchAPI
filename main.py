@@ -21,7 +21,6 @@ if str(HELPERS_DIR) not in sys.path:
 import first_etsy_api_use as etsy
 import third_ai_keywords as ai
 import fourth_everbee_keyword as everbee
-import supabase_helper as sb
 
 # Simple in-memory progress tracker (per-process)
 download_progress: Dict[str, Optional[float | int | str]] = {
@@ -38,10 +37,6 @@ download_progress: Dict[str, Optional[float | int | str]] = {
     "error": None,                  # str
 }
 download_lock = threading.Lock()
-
-# Guard to ensure only one download attempt runs at a time
-download_attempt_lock = threading.Lock()
-download_attempt_in_progress = False
 
 load_dotenv()
 OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
@@ -74,28 +69,6 @@ class RunScriptRequest(BaseModel):
 app = FastAPI(title="AI Keywords Etsy API", version="1.2.0")
 
 # ---------- Utils ----------
-
-def ensure_curl_available() -> Dict[str, any]:
-    import shutil
-    curl_path = shutil.which("curl")
-    return {
-        "curl_present": curl_path is not None,
-        "curl_path": curl_path,
-    }
-
-def _to_bucket_path(path_str: str) -> str | None:
-    # Map local outputs/users paths to 'outputs/...', 'users/...'
-    p = Path(path_str).resolve()
-    out_root = Path(OUTPUT_DIR).resolve()
-    usr_root = Path(USERS_DIR).resolve()
-    ps = str(p)
-    if ps.startswith(str(out_root)):
-        rel = ps[len(str(out_root)):].lstrip(os.sep)
-        return f"outputs/{rel.replace(os.sep, '/')}"
-    if ps.startswith(str(usr_root)):
-        rel = ps[len(str(usr_root)):].lstrip(os.sep)
-        return f"users/{rel.replace(os.sep, '/')}"
-    return None
 
 def ensure_model_available() -> Dict[str, any]:
     """
@@ -176,178 +149,149 @@ def ensure_model_available() -> Dict[str, any]:
             status["error"] = f"Model missing at {model_path} and MODEL_URL not set"
             return status
 
-        # Single-flight guard: ensure only one download attempt runs
-        global download_attempt_in_progress
-        with download_attempt_lock:
-            download_attempt_in_progress = True
+        # Robust download with simple retry/backoff
+        tmp_path = model_path.with_suffix(model_path.suffix + ".tmp")
+        # Pre-clean any stale temp file
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        tries = 3
+        last_err = None
+        for i in range(1, tries + 1):
             try:
-                # Robust download with simple retry/backoff
-                tmp_path = model_path.with_suffix(model_path.suffix + ".tmp")
-                # Pre-clean any stale temp file
-                try:
-                    if tmp_path.exists():
-                        tmp_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-
-                tries = 3
-                last_err = None
-                for i in range(1, tries + 1):
+                # Ensure only one concurrent download attempt
+                with download_lock:
+                    # Initialize progress
                     try:
-                        # Pre-fetch expected size with HEAD (if available)
-                        expected_total = None
-                        try:
-                            h = requests.head(model_url, timeout=30)
-                            cl = h.headers.get("Content-Length")
-                            if cl and cl.isdigit():
-                                expected_total = int(cl)
-                        except Exception:
-                            expected_total = None
+                        download_progress.update({
+                            "status": "downloading",
+                            "source": model_url,
+                            "destination": str(model_path),
+                            "total_bytes": None,
+                            "downloaded_bytes": 0,
+                            "percent": None,
+                            "speed_bps": None,
+                            "eta_seconds": None,
+                            "started_at": time.time(),
+                            "updated_at": time.time(),
+                            "error": None,
+                        })
+                    except Exception:
+                        pass
+                    last_logged_percent = -5.0
+                    last_logged_time = time.time()
 
-                        # Initialize progress
+                    with requests.get(model_url, stream=True, timeout=600) as r:
+                        r.raise_for_status()
+                        # Total size if known
+                        total_hdr = r.headers.get("Content-Length")
+                        total = int(total_hdr) if total_hdr and total_hdr.isdigit() else None
                         try:
-                            download_progress.update({
-                                "status": "downloading",
-                                "source": model_url,
-                                "destination": str(model_path),
-                                "total_bytes": expected_total,
-                                "downloaded_bytes": 0,
-                                "percent": None,
-                                "speed_bps": None,
-                                "eta_seconds": None,
-                                "started_at": time.time(),
-                                "updated_at": time.time(),
-                                "error": None,
-                            })
+                            download_progress["total_bytes"] = total
                         except Exception:
                             pass
-                        last_logged_percent = -5.0
-                        last_logged_time = time.time()
 
-                        with requests.get(model_url, stream=True, timeout=(60, 600)) as r:
-                            r.raise_for_status()
-                            # Total size if known
-                            total_hdr = r.headers.get("Content-Length")
-                            total = expected_total or (int(total_hdr) if total_hdr and total_hdr.isdigit() else None)
+                        hasher = None
+                        if model_sha256:
+                            import hashlib
+                            hasher = hashlib.sha256()
+
+                        downloaded = 0
+                        start_t = time.time()
+                        with open(tmp_path, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                                if not chunk:
+                                    continue
+                                f.write(chunk)
+                                downloaded += len(chunk)
+                                if hasher:
+                                    hasher.update(chunk)
+
+                                # Update progress metrics
+                                now = time.time()
+                                elapsed = max(now - start_t, 1e-6)
+                                speed = downloaded / elapsed
+                                percent = (downloaded / total * 100.0) if total else None
+                                eta = ((total - downloaded) / speed) if (total and speed > 0) else None
+
+                                try:
+                                    download_progress.update({
+                                        "downloaded_bytes": downloaded,
+                                        "speed_bps": speed,
+                                        "percent": percent,
+                                        "eta_seconds": eta,
+                                        "updated_at": now,
+                                    })
+                                except Exception:
+                                    pass
+
+                                # Periodic log every 5 seconds or +5% progress
+                                should_log = (now - last_logged_time >= 5.0) or (
+                                    percent is not None and percent - last_logged_percent >= 5.0
+                                )
+                                if should_log:
+                                    last_logged_time = now
+                                    last_logged_percent = percent or last_logged_percent
+                                    if percent is not None and total is not None:
+                                        print(f"[Download] {percent:.1f}% ({downloaded}/{total} bytes) "
+                                              f"speed={speed/1e6:.2f} MB/s eta={int(eta or 0)}s", flush=True)
+                                    else:
+                                        print(f"[Download] {downloaded} bytes streamed "
+                                              f"speed={speed/1e6:.2f} MB/s", flush=True)
+
+                    # Checksum if provided
+                    if model_sha256:
+                        digest = hasher.hexdigest() if hasher else ""
+                        if digest.lower() != model_sha256.strip().lower():
                             try:
-                                download_progress["total_bytes"] = total
+                                tmp_path.unlink(missing_ok=True)
                             except Exception:
                                 pass
+                            raise RuntimeError(f"SHA256 mismatch: expected {model_sha256}, got {digest}")
 
-                            hasher = None
-                            if model_sha256:
-                                import hashlib
-                                hasher = hashlib.sha256()
+                    # Finalize
+                    tmp_path.replace(model_path)
+                    status["downloaded"] = True
+                    status["model_present"] = True
+                    status["model_size_bytes"] = model_path.stat().st_size
 
-                            downloaded = 0
-                            start_t = time.time()
-                            with open(tmp_path, "wb") as f:
-                                for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
-                                    if not chunk:
-                                        continue
-                                    f.write(chunk)
-                                    downloaded += len(chunk)
-                                    if hasher:
-                                        hasher.update(chunk)
+                    try:
+                        download_progress.update({
+                            "status": "complete",
+                            "destination": str(model_path),
+                            "total_bytes": status["model_size_bytes"],
+                            "downloaded_bytes": status["model_size_bytes"],
+                            "percent": 100.0,
+                            "eta_seconds": 0.0,
+                            "updated_at": time.time(),
+                        })
+                    except Exception:
+                        pass
+                    return status
+            except Exception as e:
+                last_err = e
+                # Clean tmp on failure
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except Exception:
+                    pass
+                backoff = 2 ** (i - 1)
+                try:
+                    download_progress.update({
+                        "status": "error",
+                        "error": str(e),
+                        "updated_at": time.time(),
+                    })
+                except Exception:
+                    pass
+                print(f"[Startup] Download attempt {i}/{tries} failed: {e}. Retrying in {backoff}s...", flush=True)
+                time.sleep(backoff)
 
-                                    # Update progress metrics
-                                    now = time.time()
-                                    elapsed = max(now - start_t, 1e-6)
-                                    speed = downloaded / elapsed
-                                    percent = (downloaded / total * 100.0) if total else None
-                                    eta = ((total - downloaded) / speed) if (total and speed > 0) else None
-
-                                    try:
-                                        download_progress.update({
-                                            "downloaded_bytes": downloaded,
-                                            "speed_bps": speed,
-                                            "percent": percent,
-                                            "eta_seconds": eta,
-                                            "updated_at": now,
-                                        })
-                                    except Exception:
-                                        pass
-
-                                    # Periodic log every 5 seconds or +5% progress
-                                    should_log = (now - last_logged_time >= 5.0) or (
-                                        percent is not None and percent - last_logged_percent >= 5.0
-                                    )
-                                    if should_log:
-                                        last_logged_time = now
-                                        last_logged_percent = percent or last_logged_percent
-                                        if percent is not None and total is not None:
-                                            print(f"[Download] {percent:.1f}% ({downloaded}/{total} bytes) "
-                                                  f"speed={speed/1e6:.2f} MB/s eta={int(eta or 0)}s", flush=True)
-                                        else:
-                                            print(f"[Download] {downloaded} bytes streamed "
-                                                  f"speed={speed/1e6:.2f} MB/s", flush=True)
-
-                                # Force data to disk before verification and rename
-                                f.flush()
-                                try:
-                                    os.fsync(f.fileno())
-                                except Exception:
-                                    pass
-
-                        # Strict completion verification before finalize
-                        size_on_disk = tmp_path.stat().st_size if tmp_path.exists() else 0
-                        if size_on_disk != downloaded:
-                            raise RuntimeError(f"Write mismatch: expected {downloaded} bytes, got {size_on_disk}")
-                        if total is not None and downloaded != total:
-                            raise RuntimeError(f"Partial download: expected {total} bytes, got {downloaded}")
-
-                        # Checksum if provided
-                        if model_sha256:
-                            digest = hasher.hexdigest() if hasher else ""
-                            if digest.lower() != model_sha256.strip().lower():
-                                try:
-                                    tmp_path.unlink(missing_ok=True)
-                                except Exception:
-                                    pass
-                                raise RuntimeError(f"SHA256 mismatch: expected {model_sha256}, got {digest}")
-
-                        # Finalize atomically
-                        tmp_path.replace(model_path)
-                        status["downloaded"] = True
-                        status["model_present"] = True
-                        status["model_size_bytes"] = model_path.stat().st_size
-
-                        try:
-                            download_progress.update({
-                                "status": "complete",
-                                "destination": str(model_path),
-                                "total_bytes": status["model_size_bytes"],
-                                "downloaded_bytes": status["model_size_bytes"],
-                                "percent": 100.0,
-                                "eta_seconds": 0.0,
-                                "updated_at": time.time(),
-                            })
-                        except Exception:
-                            pass
-                        return status
-                    except Exception as e:
-                        last_err = e
-                        # Clean tmp on failure
-                        try:
-                            tmp_path.unlink(missing_ok=True)
-                        except Exception:
-                            pass
-                        backoff = 2 ** (i - 1)
-                        try:
-                            download_progress.update({
-                                "status": "error",
-                                "error": str(e),
-                                "updated_at": time.time(),
-                            })
-                        except Exception:
-                            pass
-                        print(f"[Startup] Download attempt {i}/{tries} failed: {e}. Retrying in {backoff}s...", flush=True)
-                        time.sleep(backoff)
-
-                status["error"] = f"Download failed after {tries} attempts: {last_err}"
-                return status
-            finally:
-                download_attempt_in_progress = False
+        status["error"] = f"Download failed after {tries} attempts: {last_err}"
+        return status
     except Exception as e:
         status["error"] = str(e)
         return status
@@ -362,14 +306,9 @@ app = FastAPI(title="AI Keywords Etsy API", version="1.2.0", lifespan=lifespan)
 
 @app.get("/ready")
 def ready() -> Dict:
-    import shutil
-    curl_path = shutil.which("curl")
-    curl_present = curl_path is not None
-
     st = ensure_model_available()
-    status_ok = st["model_present"] and not st["error"] and curl_present
     return {
-        "status": "ok" if status_ok else "degraded",
+        "status": "ok" if st["model_present"] and not st["error"] else "degraded",
         "model_dir": st["model_dir"],
         "model_path": st["model_path"],
         "model_present": st["model_present"],
@@ -377,8 +316,6 @@ def ready() -> Dict:
         "download_attempted": st["downloaded"],
         "volume_mounted": st["volume_mounted"],
         "error": st["error"],
-        "curl_present": curl_present,
-        "curl_path": curl_path,
         "download_progress": {
             "status": download_progress.get("status"),
             "total_bytes": download_progress.get("total_bytes"),
@@ -463,6 +400,7 @@ def start_queue_consumer_thread(queue_path: str, run_root_dir: str, outputs_dir:
     process listings one-by-one. Returns the thread handle.
     """
     import threading
+    from pathlib import Path
     import second_demand_extractor as dem
 
     t = threading.Thread(
@@ -498,6 +436,7 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
     - Attach Everbee metrics from outputs/everbee_realtime_results_{slug}.json
     - Write/append to outputs/megafile_listings_{slug}.json atomically
     """
+    from pathlib import Path
     import time as _time
     import json as _json
 
@@ -514,7 +453,7 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
     def _load_ai_map() -> dict[int, list[str]]:
         path = Path(outputs_dir) / f"ai_keywords_results_{slug}.json"
         try:
-            obj = _json.loads(path.read_text(encoding="utf-8")) if path.exists() else _json.loads(requests.get(sb.public_url(sb.get_bucket_name(), _to_bucket_path(str(path))), timeout=15).text)
+            obj = _json.loads(path.read_text(encoding="utf-8"))
             items = obj.get("listings") or obj.get("results") or []
             out: dict[int, list[str]] = {}
             for it in items:
@@ -532,7 +471,7 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
     def _load_everbee_map() -> dict[int, list[dict]]:
         path = Path(outputs_dir) / f"everbee_realtime_results_{slug}.json"
         try:
-            obj = _json.loads(path.read_text(encoding="utf-8")) if path.exists() else _json.loads(requests.get(sb.public_url(sb.get_bucket_name(), _to_bucket_path(str(path))), timeout=15).text)
+            obj = _json.loads(path.read_text(encoding="utf-8"))
             items = obj.get("listings") or []
             out: dict[int, list[dict]] = {}
             for it in items:
@@ -661,10 +600,7 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
                 with open(megafile_path, "r", encoding="utf-8") as f:
                     mega = _json.load(f)
             except Exception:
-                try:
-                    mega = _json.loads(requests.get(sb.public_url(sb.get_bucket_name(), _to_bucket_path(str(megafile_path))), timeout=15).text)
-                except Exception:
-                    mega = {"entries": []}
+                mega = {"entries": []}
 
             idx = next((i for i, e in enumerate(mega.get("entries", [])) if e.get("listing_id") == li), None)
             if idx is None:
@@ -699,16 +635,16 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
         time.sleep(1)
 
 def write_json_file(path: str, obj: Dict) -> None:
-    # Supabase upload for outputs/users; skip local write
-    bp = _to_bucket_path(path)
-    if bp:
-        try:
-            sb.ensure_bucket(public=True)
-        except Exception:
-            pass
-        sb.upload_bytes(None, bp, json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8"), content_type="application/json", upsert=True)
-        return
-        
+    """
+    Atomically write JSON to path by writing to a temp file then replacing.
+    This prevents truncated/partial JSON files under concurrent or interrupted writes.
+    """
+    ensure_dir(str(Path(path).parent))
+    tmp_path = f"{path}.tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)
+
 def collect_latest_demand_per_listing(cart_runs_root: str) -> Dict[int, Optional[int]]:
     listing_to_latest_ts: Dict[int, float] = {}
     listing_to_demand: Dict[int, Optional[int]] = {}
@@ -945,6 +881,7 @@ def build_second_step_demand_summary(run_root_dir: str, popular_listings_path: s
 
 def build_megafile_from_outputs(outputs_dir: str, second_step_summary_path: str, slug: str) -> str:
     import json as _json
+    from pathlib import Path
     import time as _time
     import html as html_lib
 
@@ -952,10 +889,7 @@ def build_megafile_from_outputs(outputs_dir: str, second_step_summary_path: str,
         try:
             return _json.loads(path.read_text(encoding="utf-8"))
         except Exception:
-            try:
-                return _json.loads(requests.get(sb.public_url(sb.get_bucket_name(), _to_bucket_path(str(path))), timeout=15).text)
-            except Exception:
-                return {}
+            return {}
 
     # Inputs
     summary_obj = _safe_load(Path(second_step_summary_path))
@@ -1290,6 +1224,7 @@ def start_keywords_and_everbee_thread(popular_listings_path: str, outputs_dir: s
     return t
 
 def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: str, slug: str, queue_path: Optional[str], progress_cb: Optional[callable] = None, total_target: int = 0, user_id: Optional[str] = None) -> None:
+    from pathlib import Path
     import json
     import time
     from concurrent.futures import ThreadPoolExecutor
@@ -1551,15 +1486,15 @@ def run_stream(payload: RunRequest):
         try:
             with sem:
                 res = orchestrate_run(payload.user_id.strip(), payload.keyword.strip(), payload.desired_total, progress_cb=emit)
-            # Attach full megafile JSON to the completion event (from Supabase)
+            # Attach full megafile JSON to the completion event
             megafile_json = None
             try:
                 mp = (res.get("meta") or {}).get("megafile_path")
                 if mp:
-                    url = sb.public_url(sb.get_bucket_name(), _to_bucket_path(mp))
-                    megafile_json = json.loads(requests.get(url, timeout=15).text)
+                    with open(mp, "r", encoding="utf-8") as f:
+                        megafile_json = json.load(f)
             except Exception as e:
-                megafile_json = {"error": f"Failed to load megafile from Supabase: {str(e)}"}
+                megafile_json = {"error": f"Failed to load megafile: {str(e)}"}
             emit({"type": "complete", "success": res.get("success"), "result": res, "megafile": megafile_json})
         except Exception as e:
             emit({"type": "error", "error": str(e)})
