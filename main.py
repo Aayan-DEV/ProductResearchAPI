@@ -1267,7 +1267,7 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
     ai_completed_ids: set[int] = set()
     ev_completed_ids: set[int] = set()
     futures = []
-    executor = ThreadPoolExecutor(max_workers=4)
+    executor = ThreadPoolExecutor(max_workers=10)
     out_lock = threading.Lock()
     search_map: dict[int, str] = {}
     try:
@@ -1478,7 +1478,7 @@ def run_stream(payload: RunRequest):
     sem = globals().get("_RUN_SEMAPHORE")
     if sem is None:
         import threading as _t, os
-        sem = _t.Semaphore(int(os.getenv("RUN_CONCURRENCY", "2")))
+        sem = _t.Semaphore(int(os.getenv("RUN_CONCURRENCY", "10")))
         globals()["_RUN_SEMAPHORE"] = sem
 
     ev_q: "queue.Queue[dict]" = queue.Queue()
@@ -1564,13 +1564,13 @@ def enqueue(payload: RunRequest) -> Dict:
     jobs: _Dict[str, dict] = globals().setdefault("_JOBS", {})
     executor: ThreadPoolExecutor = globals().get("_JOB_EXECUTOR")
     if executor is None:
-        executor = ThreadPoolExecutor(max_workers=int(os.getenv("JOB_WORKERS", "2")))
+        executor = ThreadPoolExecutor(max_workers=int(os.getenv("JOB_WORKERS", "10")))
         globals()["_JOB_EXECUTOR"] = executor
 
     sem = globals().get("_RUN_SEMAPHORE")
     if sem is None:
         import threading
-        sem = threading.Semaphore(int(os.getenv("RUN_CONCURRENCY", "2")))
+        sem = threading.Semaphore(int(os.getenv("RUN_CONCURRENCY", "10")))
         globals()["_RUN_SEMAPHORE"] = sem
 
     job_id = str(uuid.uuid4())
@@ -1628,7 +1628,7 @@ def run(payload: RunRequest) -> Dict:
         sem = globals().get("_RUN_SEMAPHORE")
         if sem is None:
             import threading, os
-            sem = threading.Semaphore(int(os.getenv("RUN_CONCURRENCY", "2")))
+            sem = threading.Semaphore(int(os.getenv("RUN_CONCURRENCY", "10")))
             globals()["_RUN_SEMAPHORE"] = sem
 
         with sem:
