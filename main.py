@@ -64,11 +64,88 @@ class RunScriptRequest(BaseModel):
     keyword: Optional[str] = None
     desired_total: Optional[int] = None
 
+class ReconnectRequest(BaseModel):
+    user_id: str = Field(..., min_length=1)
+    keyword: str = Field(..., min_length=1)
+
 # ---------- App ----------
 
 app = FastAPI(title="AI Keywords Etsy API", version="1.2.0")
 
 # ---------- Utils ----------
+
+@app.post("/reconnect/stream")
+def reconnect_stream(payload: ReconnectRequest):
+    import json, time, queue
+    user_id = payload.user_id.strip()
+    keyword = payload.keyword.strip()
+    if not user_id or not keyword:
+        return {"success": False, "error": "user_id and keyword are required"}
+
+    key = _session_key(user_id, keyword)
+    sess = _SESSIONS.get(key)
+
+    # If no active session, send a single 'complete' event with latest megafile (if any)
+    if not sess or sess.get("status") in (None, "completed", "error"):
+        slug = slugify_safe(keyword)
+        mf_path = (sess or {}).get("megafile_path") or _find_latest_megafile_for_slug(slug)
+
+        def sse_done():
+            ev = {
+                "type": "complete",
+                "user_id": user_id,
+                "keyword": keyword,
+                "message": "No active session; returning latest megafile." if mf_path else "No active session and megafile not found.",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "megafile": None,
+                "success": True,
+            }
+            if mf_path:
+                try:
+                    with open(mf_path, "r", encoding="utf-8") as f:
+                        ev["megafile"] = json.load(f)
+                except Exception as e:
+                    ev["megafile"] = {"error": f"Failed to load megafile: {str(e)}", "path": mf_path}
+            yield f"data: {json.dumps(ev)}\n\n"
+
+        return StreamingResponse(
+            sse_done(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    # Active session: subscribe and stream future events
+    def sse_iter():
+        sub_q = _session_subscribe(key)
+        try:
+            resume_ev = {
+                "type": "resume",
+                "user_id": user_id,
+                "keyword": keyword,
+                "message": "Reconnected to active session; streaming updates.",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+            yield f"data: {json.dumps(resume_ev)}\n\n"
+            last_keepalive = time.time()
+            while True:
+                try:
+                    ev = sub_q.get(timeout=0.5)
+                    yield f"data: {json.dumps(ev)}\n\n"
+                    if ev.get("type") in ("complete", "error"):
+                        break
+                except queue.Empty:
+                    now = time.time()
+                    if now - last_keepalive >= 5.0:
+                        last_keepalive = now
+                        yield f": keepalive {int(now)}\n\n"
+        finally:
+            _session_unsubscribe(key, sub_q)
+
+    return StreamingResponse(
+        sse_iter(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
 
 def ensure_model_available() -> Dict[str, any]:
     """
@@ -301,8 +378,11 @@ async def lifespan(app: FastAPI):
     threading.Thread(target=ensure_model_available, daemon=True, name="model-ensure").start()
     yield
 
-# Swap to lifespan (deprecates @app.on_event)
-app = FastAPI(title="AI Keywords Etsy API", version="1.2.0", lifespan=lifespan)
+# Do NOT recreate `app` here; attach a startup hook instead so routes remain.
+# Attach startup hook; do not recreate `app` again.
+@app.on_event("startup")
+async def _startup():
+    threading.Thread(target=ensure_model_available, daemon=True, name="model-ensure").start()
 
 @app.get("/ready")
 def ready() -> Dict:
@@ -346,6 +426,111 @@ def slugify_safe(text: str) -> str:
         return etsy.slugify_keyword(text)
     except Exception:
         return "".join(ch.lower() if ch.isalnum() else "-" for ch in text).strip("-")
+
+
+# --- Session Registry (for reconnectable streams) ---
+_SESSIONS: Dict[str, Dict] = {}
+_SESSIONS_LOCK = threading.Lock()
+
+def _session_key(user_id: str, keyword: str) -> str:
+    return f"{slugify_safe(keyword)}::{slugify_safe(user_id)}"
+
+def _session_get_or_create(user_id: str, keyword: str) -> Dict:
+    key = _session_key(user_id, keyword)
+    with _SESSIONS_LOCK:
+        sess = _SESSIONS.get(key)
+        if not sess:
+            sess = {
+                "key": key,
+                "user_id": user_id,
+                "keyword": keyword,
+                "slug": slugify_safe(keyword),
+                "status": "running",
+                "started_at": time.time(),
+                "ended_at": None,
+                "megafile_path": None,
+                "run_root_dir": None,
+                "outputs_dir": None,
+                "events": [],              # recent events buffer
+                "subscribers": [],         # list[queue.Queue]
+                "max_events": 1000,
+            }
+            _SESSIONS[key] = sess
+        return sess
+
+def _session_update_meta(key: str, **kwargs) -> None:
+    with _SESSIONS_LOCK:
+        sess = _SESSIONS.get(key)
+        if not sess:
+            return
+        for k, v in kwargs.items():
+            sess[k] = v
+
+def _session_emit(key: str, ev: Dict) -> None:
+    import queue
+    ev = dict(ev or {})
+    ev["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    with _SESSIONS_LOCK:
+        sess = _SESSIONS.get(key)
+        if not sess:
+            return
+        # buffer
+        events = sess.get("events", [])
+        max_events = int(sess.get("max_events", 1000))
+        events.append(ev)
+        if len(events) > max_events:
+            # drop oldest
+            del events[: len(events) - max_events]
+        sess["events"] = events
+        # broadcast
+        for q in list(sess.get("subscribers", [])):
+            try:
+                q.put(ev, block=False)
+            except Exception:
+                # drop unhealthy subscriber
+                try:
+                    sess["subscribers"].remove(q)
+                except Exception:
+                    pass
+
+def _session_subscribe(key: str) -> "queue.Queue[dict]":
+    import queue
+    q: "queue.Queue[dict]" = queue.Queue()
+    with _SESSIONS_LOCK:
+        sess = _SESSIONS.get(key)
+        if not sess:
+            return q
+        sess.setdefault("subscribers", []).append(q)
+    return q
+
+def _session_unsubscribe(key: str, q) -> None:
+    with _SESSIONS_LOCK:
+        sess = _SESSIONS.get(key)
+        if not sess:
+            return
+        try:
+            subs = sess.get("subscribers", [])
+            if q in subs:
+                subs.remove(q)
+            sess["subscribers"] = subs
+        except Exception:
+            pass
+
+def _find_latest_megafile_for_slug(slug: str) -> Optional[str]:
+    try:
+        # Find latest run folder that starts with slug_
+        runs = []
+        for p in Path(OUTPUT_DIR).iterdir():
+            if p.is_dir() and p.name.startswith(f"{slug}_"):
+                runs.append(p)
+        if not runs:
+            return None
+        runs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        latest = runs[0]
+        mf = latest / "outputs" / f"megafile_listings_{slug}.json"
+        return str(mf) if mf.exists() else None
+    except Exception:
+        return None
 
 def ensure_dir(path_str: str) -> None:
     os.makedirs(path_str, exist_ok=True)
@@ -1467,7 +1652,7 @@ from fastapi.responses import StreamingResponse
 
 @app.post("/run/stream")
 def run_stream(payload: RunRequest):
-    import threading, queue, json, time
+    import threading, json, time, queue
 
     if not payload.user_id.strip():
         return {"success": False, "error": "user_id is required"}
@@ -1481,68 +1666,73 @@ def run_stream(payload: RunRequest):
         sem = _t.Semaphore(int(os.getenv("RUN_CONCURRENCY", "10")))
         globals()["_RUN_SEMAPHORE"] = sem
 
-    ev_q: "queue.Queue[dict]" = queue.Queue()
+    user_id = payload.user_id.strip()
+    keyword = payload.keyword.strip()
+    sess = _session_get_or_create(user_id, keyword)
+    key = sess["key"]
 
     def emit(ev: dict):
         try:
-            # tag every event with user_id for frontend routing
-            ev.setdefault("user_id", payload.user_id.strip())
-            ev_q.put(ev)
+            ev.setdefault("user_id", user_id)
+            _session_emit(key, ev)
         except Exception:
             pass
 
     def worker():
         try:
             with sem:
-                res = orchestrate_run(payload.user_id.strip(), payload.keyword.strip(), payload.desired_total, progress_cb=emit)
+                res = orchestrate_run(user_id, keyword, payload.desired_total, progress_cb=emit)
             # Attach full megafile JSON to the completion event
             megafile_json = None
+            megafile_path = None
             try:
                 mp = (res.get("meta") or {}).get("megafile_path")
                 if mp:
+                    megafile_path = mp
                     with open(mp, "r", encoding="utf-8") as f:
                         megafile_json = json.load(f)
             except Exception as e:
                 megafile_json = {"error": f"Failed to load megafile: {str(e)}"}
+            # Mark session complete and emit
+            _session_update_meta(key, status="completed", ended_at=time.time(), megafile_path=megafile_path)
             emit({"type": "complete", "success": res.get("success"), "result": res, "megafile": megafile_json})
         except Exception as e:
+            _session_update_meta(key, status="error", ended_at=time.time())
             emit({"type": "error", "error": str(e)})
 
-    threading.Thread(target=worker, daemon=True, name=f"run-stream-{payload.user_id.strip()}").start()
+    threading.Thread(target=worker, daemon=True, name=f"run-stream-{user_id}").start()
 
     def sse_iter():
-        # Initial event for UI bootstrap
-        start_ev = {
-            "type": "start",
-            "user_id": payload.user_id.strip(),
-            "stage": "start",
-            "message": f"Run started for keyword='{payload.keyword.strip()}'",
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        }
-        yield f"data: {json.dumps(start_ev)}\n\n"
-        last_keepalive = time.time()
-        while True:
-            try:
-                ev = ev_q.get(timeout=0.5)
-                ev["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-                yield f"data: {json.dumps(ev)}\n\n"
-                if ev.get("type") in ("complete", "error"):
-                    break
-            except queue.Empty:
-                # periodic keepalive comments (SSE)
-                now = time.time()
-                if now - last_keepalive >= 5.0:
-                    last_keepalive = now
-                    yield f": keepalive {int(now)}\n\n"
+        # subscribe to session and stream events
+        sub_q = _session_subscribe(key)
+        try:
+            start_ev = {
+                "type": "start",
+                "user_id": user_id,
+                "stage": "start",
+                "message": f"Run started for keyword='{keyword}'",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+            yield f"data: {json.dumps(start_ev)}\n\n"
+            last_keepalive = time.time()
+            while True:
+                try:
+                    ev = sub_q.get(timeout=0.5)
+                    yield f"data: {json.dumps(ev)}\n\n"
+                    if ev.get("type") in ("complete", "error"):
+                        break
+                except queue.Empty:
+                    now = time.time()
+                    if now - last_keepalive >= 5.0:
+                        last_keepalive = now
+                        yield f": keepalive {int(now)}\n\n"
+        finally:
+            _session_unsubscribe(key, sub_q)
 
     return StreamingResponse(
         sse_iter(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
 
 @app.get("/health")
