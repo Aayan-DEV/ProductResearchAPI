@@ -57,6 +57,7 @@ class RunRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     keyword: str = Field(..., min_length=1)
     desired_total: Optional[int] = None
+    session_id: str = Field(..., min_length=1)
 
 class RunScriptRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
@@ -67,6 +68,7 @@ class RunScriptRequest(BaseModel):
 class ReconnectRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     keyword: str = Field(..., min_length=1)
+    session_id: str = Field(..., min_length=1)
 
 # ---------- App ----------
 
@@ -79,10 +81,11 @@ def reconnect_stream(payload: ReconnectRequest):
     import json, time, queue
     user_id = payload.user_id.strip()
     keyword = payload.keyword.strip()
-    if not user_id or not keyword:
-        return {"success": False, "error": "user_id and keyword are required"}
+    session_id = payload.session_id.strip()
+    if not user_id or not keyword or not session_id:
+        return {"success": False, "error": "user_id, keyword, and session_id are required"}
 
-    key = _session_key(user_id, keyword)
+    key = _session_key(user_id, keyword, session_id)
     sess = _SESSIONS.get(key)
 
     # If no active session, return raw megafile JSON if present; else emit a 'complete' SSE without megafile
@@ -106,6 +109,7 @@ def reconnect_stream(payload: ReconnectRequest):
                 "type": "complete",
                 "user_id": user_id,
                 "keyword": keyword,
+                "session_id": session_id,
                 "message": "No active session and megafile not found.",
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "megafile": None,
@@ -127,6 +131,7 @@ def reconnect_stream(payload: ReconnectRequest):
                 "type": "resume",
                 "user_id": user_id,
                 "keyword": keyword,
+                "session_id": session_id,
                 "message": "Reconnected to active session; streaming updates.",
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
             }
@@ -437,16 +442,20 @@ def slugify_safe(text: str) -> str:
 _SESSIONS: Dict[str, Dict] = {}
 _SESSIONS_LOCK = threading.Lock()
 
-def _session_key(user_id: str, keyword: str) -> str:
+def _session_key(user_id: str, keyword: str, session_id: Optional[str] = None) -> str:
+    # Prefer explicit session_id as the unique key
+    if session_id and session_id.strip():
+        return slugify_safe(session_id.strip())
     return f"{slugify_safe(keyword)}::{slugify_safe(user_id)}"
 
-def _session_get_or_create(user_id: str, keyword: str) -> Dict:
-    key = _session_key(user_id, keyword)
+def _session_get_or_create(user_id: str, keyword: str, session_id: Optional[str] = None) -> Dict:
+    key = _session_key(user_id, keyword, session_id)
     with _SESSIONS_LOCK:
         sess = _SESSIONS.get(key)
         if not sess:
             sess = {
                 "key": key,
+                "session_id": session_id,
                 "user_id": user_id,
                 "keyword": keyword,
                 "slug": slugify_safe(keyword),
@@ -456,12 +465,28 @@ def _session_get_or_create(user_id: str, keyword: str) -> Dict:
                 "megafile_path": None,
                 "run_root_dir": None,
                 "outputs_dir": None,
-                "events": [],              # recent events buffer
-                "subscribers": [],         # list[queue.Queue]
+                "events": [],
+                "subscribers": [],
                 "max_events": 1000,
             }
             _SESSIONS[key] = sess
         return sess
+
+def write_session_meta_file(user_id: str, session_id: str, keyword: str) -> str:
+    users_root = USERS_DIR
+    ensure_dir(users_root)
+    user_dir = str(Path(users_root) / slugify_safe(user_id))
+    ensure_dir(user_dir)
+    sessions_dir = str(Path(user_dir) / "sessions")
+    ensure_dir(sessions_dir)
+    meta_path = str(Path(sessions_dir) / f"{slugify_safe(session_id)}.json")
+    write_json_file(meta_path, {
+        "user_id": user_id,
+        "session_id": session_id,
+        "keyword": keyword,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+    })
+    return meta_path
 
 def _session_update_meta(key: str, **kwargs) -> None:
     with _SESSIONS_LOCK:
@@ -1663,6 +1688,8 @@ def run_stream(payload: RunRequest):
         return {"success": False, "error": "user_id is required"}
     if not payload.keyword.strip():
         return {"success": False, "error": "keyword is required"}
+    if not payload.session_id.strip():
+        return {"success": False, "error": "session_id is required"}
 
     # Serialize full workflow execution inside a single process
     sem = globals().get("_RUN_SEMAPHORE")
@@ -1673,12 +1700,22 @@ def run_stream(payload: RunRequest):
 
     user_id = payload.user_id.strip()
     keyword = payload.keyword.strip()
-    sess = _session_get_or_create(user_id, keyword)
+    session_id = payload.session_id.strip()
+
+    # Persist minimal session meta before any search starts
+    try:
+        write_session_meta_file(user_id, session_id, keyword)
+    except Exception:
+        pass
+
+    sess = _session_get_or_create(user_id, keyword, session_id)
     key = sess["key"]
 
     def emit(ev: dict):
         try:
             ev.setdefault("user_id", user_id)
+            ev.setdefault("keyword", keyword)
+            ev.setdefault("session_id", session_id)
             _session_emit(key, ev)
         except Exception:
             pass
@@ -1705,7 +1742,7 @@ def run_stream(payload: RunRequest):
             _session_update_meta(key, status="error", ended_at=time.time())
             emit({"type": "error", "error": str(e)})
 
-    threading.Thread(target=worker, daemon=True, name=f"run-stream-{user_id}").start()
+    threading.Thread(target=worker, daemon=True, name=f"run-stream-{slugify_safe(session_id)}").start()
 
     def sse_iter():
         # subscribe to session and stream events
@@ -1714,6 +1751,8 @@ def run_stream(payload: RunRequest):
             start_ev = {
                 "type": "start",
                 "user_id": user_id,
+                "keyword": keyword,
+                "session_id": session_id,
                 "stage": "start",
                 "message": f"Run started for keyword='{keyword}'",
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
