@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 import threading
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 HELPERS_DIR = PROJECT_ROOT / "Helpers"
@@ -85,27 +85,32 @@ def reconnect_stream(payload: ReconnectRequest):
     key = _session_key(user_id, keyword)
     sess = _SESSIONS.get(key)
 
-    # If no active session, send a single 'complete' event with latest megafile (if any)
+    # If no active session, return raw megafile JSON if present; else emit a 'complete' SSE without megafile
     if not sess or sess.get("status") in (None, "completed", "error"):
         slug = slugify_safe(keyword)
         mf_path = (sess or {}).get("megafile_path") or _find_latest_megafile_for_slug(slug)
+
+        if mf_path:
+            try:
+                with open(mf_path, "r", encoding="utf-8") as f:
+                    mf_json = json.load(f)
+                return JSONResponse(content=mf_json)
+            except Exception as e:
+                return JSONResponse(
+                    content={"error": f"Failed to load megafile: {str(e)}", "path": mf_path},
+                    status_code=500,
+                )
 
         def sse_done():
             ev = {
                 "type": "complete",
                 "user_id": user_id,
                 "keyword": keyword,
-                "message": "No active session; returning latest megafile." if mf_path else "No active session and megafile not found.",
+                "message": "No active session and megafile not found.",
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
                 "megafile": None,
                 "success": True,
             }
-            if mf_path:
-                try:
-                    with open(mf_path, "r", encoding="utf-8") as f:
-                        ev["megafile"] = json.load(f)
-                except Exception as e:
-                    ev["megafile"] = {"error": f"Failed to load megafile: {str(e)}", "path": mf_path}
             yield f"data: {json.dumps(ev)}\n\n"
 
         return StreamingResponse(
