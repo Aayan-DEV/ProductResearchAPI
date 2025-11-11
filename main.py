@@ -11,8 +11,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 import threading
+from concurrent.futures import ThreadPoolExecutor
+import asyncio
 from fastapi.responses import StreamingResponse, JSONResponse
 
+# Ensure Helpers are importable and import singlesearch helper
 PROJECT_ROOT = Path(__file__).resolve().parent
 HELPERS_DIR = PROJECT_ROOT / "Helpers"
 if str(HELPERS_DIR) not in sys.path:
@@ -21,7 +24,10 @@ if str(HELPERS_DIR) not in sys.path:
 import first_etsy_api_use as etsy
 import third_ai_keywords as ai
 import fourth_everbee_keyword as everbee
+import singlesearch as ss
 
+# Shared thread pool for high concurrency (tune via env API_MAX_WORKERS)
+EXECUTOR = ThreadPoolExecutor(max_workers=int(os.getenv("API_MAX_WORKERS", "128")))
 # Simple in-memory progress tracker (per-process)
 download_progress: Dict[str, Optional[float | int | str]] = {
     "status": "idle",               # idle | downloading | complete | error
@@ -70,12 +76,106 @@ class ReconnectRequest(BaseModel):
     keyword: str = Field(..., min_length=1)
     session_id: str = Field(..., min_length=1)
 
+class SingleSearchRequest(BaseModel):
+    listing_id: int = Field(..., gt=0)
+    user_id: str = Field(..., min_length=1)
+    session_id: str = Field(..., min_length=1)
+    forced_personalize: Optional[bool] = None
+
+class ReplaceListingRequest(BaseModel):
+    listing_id: int = Field(..., gt=0)
+    user_id: str = Field(..., min_length=1)
+    session_id: str = Field(..., min_length=1)
+    forced_personalize: Optional[bool] = None
+
 # ---------- App ----------
 
 app = FastAPI(title="AI Keywords Etsy API", version="1.2.0")
 
 # ---------- Utils ----------
 
+@app.post("/single-search")
+async def api_single_search(payload: SingleSearchRequest):
+    """
+    Normal single search:
+    - Creates outputs/single_search_{listing_id}_{ts}/outputs/popular_listings_full_pdf.json
+    - On success: return the compiled JSON directly (no wrapper)
+    - Also organizes session meta using user_id/session_id on the server
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        compiled = await loop.run_in_executor(
+            EXECUTOR,
+            ss.run_single_search,
+            int(payload.listing_id),
+            payload.session_id,
+            payload.forced_personalize,
+        )
+
+        # Organize session meta for this single-search run (non-fatal)
+        try:
+            meta = compiled.get("meta") or {}
+            update_session_meta_file(
+                payload.user_id,
+                payload.session_id,
+                run_root_dir=meta.get("run_dir"),
+                outputs_dir=meta.get("outputs_dir"),
+                last_action="single_search",
+                compiled_path=meta.get("compiled_path"),
+                listing_id=compiled.get("listing_id"),
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+            )
+        except Exception as meta_err:
+            print(f"[single-search] Failed to update session meta: {meta_err}", flush=True)
+
+        # Return the raw compiled JSON, exactly as generated
+        return JSONResponse(content=compiled)
+    except Exception as e:
+        # Keep a simple error wrapper for failures
+        return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
+
+@app.post("/replace-listing")
+async def api_replace_listing(payload: ReplaceListingRequest):
+    """
+    Replace listing:
+    - Compiles listing and updates the session megafile.
+    - Returns final megafile JSON to the requester.
+    - Organizes session meta with megafile_path for the user/session.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        result = await loop.run_in_executor(
+            EXECUTOR,
+            ss.run_replace_listing,
+            int(payload.listing_id),
+            payload.user_id,
+            payload.session_id,
+            payload.forced_personalize,
+        )
+
+        # Organize session meta for replace-listing run
+        try:
+            update_session_meta_file(
+                payload.user_id,
+                payload.session_id,
+                last_action="replace_listing",
+                last_megafile_path=result.get("megafile_path"),
+                last_updated_listing_id=int(payload.listing_id),
+                timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+            )
+        except Exception as meta_err:
+            print(f"[replace-listing] Failed to update session meta: {meta_err}", flush=True)
+
+        return JSONResponse(content={
+            "success": True,
+            "megafile_path": result.get("megafile_path"),
+            "megafile": result.get("megafile"),
+            "listing_id": result.get("listing_id"),
+        })
+    except FileNotFoundError as e:
+        return JSONResponse(content={"success": False, "error": str(e)}, status_code=404)
+    except Exception as e:
+        return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
 @app.post("/reconnect/stream")
 def reconnect_stream(payload: ReconnectRequest):
     import json, time, queue
@@ -488,6 +588,23 @@ def write_session_meta_file(user_id: str, session_id: str, keyword: str) -> str:
     })
     return meta_path
 
+def update_session_meta_file(user_id: str, session_id: str, **fields) -> str:
+    users_root = USERS_DIR
+    ensure_dir(users_root)
+    user_dir = str(Path(users_root) / slugify_safe(user_id))
+    ensure_dir(user_dir)
+    sessions_dir = str(Path(user_dir) / "sessions")
+    ensure_dir(sessions_dir)
+    meta_path = str(Path(sessions_dir) / f"{slugify_safe(session_id)}.json")
+    try:
+        with open(meta_path, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+    except Exception:
+        obj = {}
+    obj.update(fields or {})
+    write_json_file(meta_path, obj)
+    return meta_path
+
 def _session_update_meta(key: str, **kwargs) -> None:
     with _SESSIONS_LOCK:
         sess = _SESSIONS.get(key)
@@ -787,6 +904,16 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
                 except Exception:
                     sale_info = None
 
+            # NEW: attach extras_from_listing.json if present
+            extras = None
+            extras_path = Path(root) / "extras_from_listing.json"
+            if extras_path.exists():
+                try:
+                    with open(extras_path, "r", encoding="utf-8") as f:
+                        extras = _json.load(f)
+                except Exception:
+                    extras = None
+
             # Build entry
             entry = {
                 "listing_id": li,
@@ -801,11 +928,13 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
                 "primary_image": primary_image,
                 "variations_cleaned": vclean,
                 "sale_info": sale_info,
+                "demand_extras": extras,
                 "source_paths": {
                     "combined": str(p),
                     "primary_image": str(img_path) if primary_image else None,
                     "variations_cleaned": str(vc_path) if vclean else None,
                     "listing_sale_info": str(sale_path) if sale_info else None,
+                    "extras_from_listing": str(extras_path) if extras else None,
                 },
                 "timestamp": _time.strftime("%Y-%m-%dT%H:%M:%S"),
             }
@@ -1036,6 +1165,46 @@ def collect_listing_sale_info_per_listing(cart_runs_root: str) -> Dict[int, Opti
                 listing_to_latest_ts[li] = ts
     return listing_to_sale
 
+def collect_demand_extras_per_listing(cart_runs_root: str) -> Dict[int, Optional[Dict]]:
+    # Collect latest extras_from_listing.json per listing_id
+    listing_to_latest_ts: Dict[int, float] = {}
+    listing_to_extras: Dict[int, Optional[Dict]] = {}
+    base = Path(cart_runs_root)
+    if not base.exists():
+        return listing_to_extras
+
+    for root, dirs, files in os.walk(str(base)):
+        if "extras_from_listing.json" in files:
+            p = Path(root) / "extras_from_listing.json"
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    obj = json.load(f)
+            except Exception:
+                continue
+
+            # Derive listing_id from path segments; extras files don’t include listing_id
+            li = None
+            for seg in Path(root).parts[::-1]:
+                if seg.isdigit():
+                    li = int(seg)
+                    break
+            if li is None:
+                # Fallback: attempt from JSON if present
+                lid = obj.get("listing_id")
+                try:
+                    li = int(lid) if lid is not None else None
+                except Exception:
+                    li = None
+            if li is None:
+                continue
+
+            ts = p.stat().st_mtime
+            prev = listing_to_latest_ts.get(li, -1)
+            if ts >= prev:
+                listing_to_extras[li] = obj
+                listing_to_latest_ts[li] = ts
+    return listing_to_extras
+
 def build_second_step_demand_summary(run_root_dir: str, popular_listings_path: str, slug: str) -> str:
     second_dir = os.path.join(run_root_dir, "second_step_done_demand_extraction")
     ensure_dir(second_dir)
@@ -1054,6 +1223,8 @@ def build_second_step_demand_summary(run_root_dir: str, popular_listings_path: s
     variations_map = collect_variations_cleaned_per_listing(cart_runs_root)
     # NEW: collect per-listing sale info
     sale_info_map = collect_listing_sale_info_per_listing(cart_runs_root)
+    # NEW: collect per-listing extras_from_listing.json
+    demand_extras_map = collect_demand_extras_per_listing(cart_runs_root)
 
     # NEW: collect per-listing shop info (details, sections, up to 100 reviews)
     try:
@@ -1070,6 +1241,9 @@ def build_second_step_demand_summary(run_root_dir: str, popular_listings_path: s
             li = None
         enriched = dict(it)
         enriched["demand"] = demand_map.get(li) if li is not None else None
+        # NEW: attach extras under demand_extras
+        if li is not None and li in demand_extras_map:
+            enriched["demand_extras"] = demand_extras_map.get(li)
         # Attach primary image details if available
         if li is not None and li in image_map:
             enriched["primary_image"] = image_map.get(li)
@@ -1175,6 +1349,7 @@ def build_megafile_from_outputs(outputs_dir: str, second_step_summary_path: str,
             "popular_info": it,
             "signals": None,
             "demand_value": it.get("demand"),
+            "demand_extras": it.get("demand_extras"),
             "keywords": ai_map.get(li, []),
             "everbee": {"results": ev_map.get(li, [])},
             "primary_image": it.get("primary_image"),
@@ -1451,7 +1626,6 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
     from pathlib import Path
     import json
     import time
-    from concurrent.futures import ThreadPoolExecutor
     import threading
 
     ai_out = Path(outputs_dir) / f"ai_keywords_results_{slug}.json"
@@ -1735,8 +1909,23 @@ def run_stream(payload: RunRequest):
                         megafile_json = json.load(f)
             except Exception as e:
                 megafile_json = {"error": f"Failed to load megafile: {str(e)}"}
+
+            # Persist the run folder path into the session JSON
+            try:
+                rr = (res.get("meta") or {}).get("run_root_dir")
+                if rr:
+                    update_session_meta_file(user_id, session_id, run_root_dir=rr)
+            except Exception:
+                pass
+
             # Mark session complete and emit
-            _session_update_meta(key, status="completed", ended_at=time.time(), megafile_path=megafile_path)
+            _session_update_meta(
+                key,
+                status="completed",
+                ended_at=time.time(),
+                megafile_path=megafile_path,
+                run_root_dir=(res.get("meta") or {}).get("run_root_dir"),
+            )
             emit({"type": "complete", "success": res.get("success"), "result": res, "megafile": megafile_json})
         except Exception as e:
             _session_update_meta(key, status="error", ended_at=time.time())

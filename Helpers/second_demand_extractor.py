@@ -1079,6 +1079,24 @@ def process_listing_demand(listing_id: int, run_dir: Path, outputs_dir: Path) ->
                 sale_obj = {k: cand.get(k) for k in sale_keys if k in cand}
                 if sale_obj and (sale_obj.get("active_promotion") or "subtotal_after_discount" in sale_obj or "original_price" in sale_obj):
                     write_file_text(out_base / "listing_sale_info.json", json.dumps(sale_obj, ensure_ascii=False, indent=2))
+
+                # NEW: always write extras_from_listing.json for the matched listing
+                extras = {}
+                try:
+                    nudge = cand.get("nudge")
+                    if isinstance(nudge, dict):
+                        if "total_carts" in nudge:
+                            extras["total_carts"] = nudge.get("total_carts")
+                        if "quantity" in nudge:
+                            extras["quantity"] = nudge.get("quantity")
+                    if "estimated_delivery_date" in cand:
+                        extras["estimated_delivery_date"] = cand.get("estimated_delivery_date")
+                    if "free_shipping" in cand:
+                        extras["free_shipping"] = cand.get("free_shipping")
+                    if extras:
+                        write_file_text(out_base / "extras_from_listing.json", json.dumps(extras, ensure_ascii=False, indent=2))
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -1798,13 +1816,9 @@ def ensure_run_output_for_group(run_dir: Path, listing_id: int, group_num: int, 
     base.mkdir(parents=True, exist_ok=True)
     return base
 
-# Helper: decide if a listing is personalizable using the latest popular JSON
+# Helper: decide if a listing is personalizable using 'has_variations' (preferred) or legacy fields
 def resolve_is_personalizable_for_listing(listing_id: int, outputs_dir: Path) -> bool:
-    try:
-        popular_path = discover_popular_json(outputs_dir)
-        info_map = load_source_listing_info_map(popular_path)
-        obj = info_map.get(int(listing_id)) or {}
-        val = obj.get("is_personalizable")
+    def _read_bool(val) -> Optional[bool]:
         if isinstance(val, bool):
             return val
         if isinstance(val, str):
@@ -1815,8 +1829,61 @@ def resolve_is_personalizable_for_listing(listing_id: int, outputs_dir: Path) ->
                 return False
         if isinstance(val, (int, float)):
             return int(val) != 0
+        return None
+
+    # 1) Prefer has_variations from popular listings JSON (if present)
+    try:
+        popular_path = discover_popular_json(outputs_dir)
+        info_map = load_source_listing_info_map(popular_path)
+        obj = info_map.get(int(listing_id)) or {}
+        hv = _read_bool(obj.get("has_variations"))
+        if hv is not None:
+            return bool(hv)
     except Exception:
         pass
+
+    # 2) Try to read has_variations from the latest megafile in outputs
+    try:
+        candidates = []
+        for base in [outputs_dir, outputs_dir / "outputs"]:
+            if base.exists():
+                candidates.extend(sorted(base.glob("megafile_listings_*.json")))
+        if candidates:
+            mf = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)[0]
+            data = json.loads(read_file_text(mf))
+            items = data.get("listings") or data.get("entries") or data.get("popular_results") or []
+            if isinstance(items, list):
+                for it in items:
+                    if not isinstance(it, dict):
+                        continue
+                    lid = it.get("listing_id") or it.get("listingId")
+                    try:
+                        li = int(lid)
+                    except Exception:
+                        li = None
+                    if li == int(listing_id):
+                        hv = _read_bool(it.get("has_variations"))
+                        if hv is not None:
+                            return bool(hv)
+                        # Legacy fallback if has_variations missing in this entry
+                        ip = _read_bool(it.get("is_personalizable"))
+                        if ip is not None:
+                            return bool(ip)
+                        break
+    except Exception:
+        pass
+
+    # 3) Final fallback: legacy is_personalizable from popular listings JSON
+    try:
+        popular_path = discover_popular_json(outputs_dir)
+        info_map = load_source_listing_info_map(popular_path)
+        obj = info_map.get(int(listing_id)) or {}
+        ip = _read_bool(obj.get("is_personalizable"))
+        if ip is not None:
+            return bool(ip)
+    except Exception:
+        pass
+
     return False
 
 # Helper: locate cart sequence cURL files based on personalizable flag
