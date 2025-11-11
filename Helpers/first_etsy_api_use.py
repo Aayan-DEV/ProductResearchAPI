@@ -356,6 +356,212 @@ def extract_listing_ids(search_json: Dict) -> List[int]:
             deduped.append(lid)
     return deduped
 
+def fetch_listing_primary_image(listing_id: int) -> Optional[Dict]:
+    """
+    Fetch the primary image for a single listing via Etsy Open API v3.
+    Returns a small dict with usable URLs and dimensions or None on failure.
+    """
+    sid = int(str(listing_id))
+    headers = {
+        "x-api-key": API_KEYSTRING,
+        "accept": "application/json",
+    }
+    # Include OAuth if present to improve fields access
+    oauth = os.getenv("ETSY_ACCESS_TOKEN") or os.getenv("ETSY_BEARER_TOKEN") or os.getenv("ETSY_OAUTH_TOKEN")
+    if oauth:
+        headers["authorization"] = f"Bearer {oauth}"
+
+    url = f"{OPENAPI_BASE}/v3/application/listings/{sid}/images"
+    for attempt in range(5):
+        try:
+            resp = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
+            status = resp.status_code
+            try:
+                data = resp.json()
+            except Exception:
+                data = None
+
+            if status in (429,) or (500 <= status < 600):
+                backoff_sleep(attempt)
+                continue
+            if status >= 400 or not isinstance(data, dict):
+                return None
+
+            results = data.get("results") or data.get("data") or []
+            if not isinstance(results, list) or not results:
+                return None
+
+            img = results[0] or {}
+            def pick(*keys):
+                for k in keys:
+                    v = img.get(k)
+                    if v:
+                        return v
+                return None
+
+            return {
+                "listing_id": sid,
+                "image_id": img.get("image_id") or img.get("listing_image_id"),
+                "url_full": pick("url_fullxfull", "full_size_image_url", "url"),
+                "url_300x300": pick("url_300x300", "url_170x135", "url_200x200", "url_small", "url"),
+                "width": pick("full_width", "width"),
+                "height": pick("full_height", "height"),
+            }
+        except requests.RequestException:
+            backoff_sleep(attempt)
+            continue
+        except Exception:
+            return None
+    return None
+
+def generate_listing_card_html(listing_id: int, title: Optional[str], page_url: Optional[str], image: Optional[Dict]) -> str:
+    """
+    Produce a minimal 'listingcards_cleaned' HTML snippet containing the listing ID and primary <img>.
+    Mirrors the structure used by search listing cards sufficiently for downstream parsing.
+    """
+    lid = int(str(listing_id))
+    img_src = None
+    if isinstance(image, dict):
+        img_src = image.get("url_300x300") or image.get("url_full") or None
+    alt = (title or f"Listing {lid}").strip()
+    href = page_url or f"https://www.etsy.com/listing/{lid}"
+
+    return f"""<li class="wt-list-unstyled wt-grid__item-xs-6 wt-grid__item-md-4 wt-grid__item-lg-3 ">
+  <div class="js-merch-stash-check-listing v2-listing-card wt-height-full"
+       data-listing-id="{lid}"
+       data-page-type="search"
+       data-behat-listing-card>
+    <a class="v2-listing-card__img wt-position-relative listing-card-rounded-corners"
+       data-listing-id="{lid}"
+       href="{href}"
+       target="etsy.{lid}">
+      <div class="placeholder listing-card-rounded-corners">
+        <div class="placeholder vertically-centered-placeholder listing-card-rounded-corners">
+          <img
+            class="wt-width-full wt-display-block listing-card-rounded-corners wt-image--cover wt-image"
+            src="{img_src or ''}"
+            alt="{html.escape(alt)}"
+            data-listing-card-listing-image
+          />
+        </div>
+      </div>
+    </a>
+    <div class="v2-listing-card__info wt-pt-xs-0">
+      <h3 class="wt-text-caption v2-listing-card__title wt-text-truncate search-half-unit-mt wt-mt-xs-1 search-half-unit-mb"
+          id="listing-title-{lid}">
+        {html.escape(alt)}
+      </h3>
+    </div>
+  </div>
+</li>
+"""
+
+# new helpers for single-search via cURL (add near the bottom of file)
+def find_latest_curl_original() -> Optional[Path]:
+    """
+    Find the latest curl_original_*.curl under outputs/*/helpers/.
+    Returns the most recently modified file path or None.
+    """
+    base = PROJECT_ROOT / "outputs"
+    try:
+        candidates: List[Path] = []
+        for p in base.glob("*"):
+            helpers = p / "helpers"
+            if helpers.exists():
+                candidates.extend(helpers.glob("curl_original_*.curl"))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+        return candidates[0]
+    except Exception:
+        return None
+
+def extract_listingcards_html_from_response(parsed_json: Dict) -> Optional[str]:
+    """
+    Extract 'output.listingCards' HTML string from listingCards JSON response.
+    """
+    try:
+        output = parsed_json.get("output")
+        if isinstance(output, dict):
+            html_str = output.get("listingCards")
+            if isinstance(html_str, str) and html_str.strip():
+                return html_str
+    except Exception:
+        pass
+    return None
+
+def write_single_listing_helpers_via_curl(run_dir: Path, listing_id: int, curl_hint_path: Optional[Path] = None) -> Optional[Path]:
+    """
+    Execute a real listingCards cURL with listing_ids=[listing_id], then save:
+    - helpers/curl_original_single.curl  (rebuilt command)
+    - helpers/listingcards_response_single.json  (raw response JSON)
+    - helpers/listingcards_cleaned_single_chunk_1.html  (HTML from response)
+    Returns path to the HTML file or None on failure.
+    """
+    helpers_dir = run_dir / "helpers"
+    ensure_output_dir(str(helpers_dir))
+
+    curl_path = curl_hint_path if curl_hint_path and Path(curl_hint_path).exists() else find_latest_curl_original()
+    if not curl_path:
+        return None
+
+    try:
+        url, method, headers, data_obj, cookies = parse_curl_file(str(curl_path))
+        # Replace listing_ids to only include our single listing id
+        try:
+            data_obj = replace_listing_ids_in_curl_data(data_obj, [int(listing_id)])
+        except Exception:
+            # If structure is different, still attempt to send as-is
+            pass
+
+        # Execute request
+        status, text, parsed = run_curl_request(url, method, headers, data_obj)
+        if status >= 400 or (parsed is None and not text):
+            return None
+
+        # Save rebuilt cURL (for traceability)
+        rebuilt = build_curl_command(url, method, headers, data_obj)
+        (helpers_dir / "curl_original_single.curl").write_text(rebuilt, encoding="utf-8")
+
+        # Save raw response JSON (prefer parsed; fallback to text)
+        try:
+            write_json(str(helpers_dir / "listingcards_response_single.json"), parsed if isinstance(parsed, dict) else {"raw": text})
+        except Exception:
+            write_text(str(helpers_dir / "listingcards_response_single.json"), text or "")
+
+        # Extract HTML and write cleaned helpers file
+        html = None
+        if isinstance(parsed, dict):
+            html = extract_listingcards_html_from_response(parsed)
+        if not html or not html.strip():
+            # If listingCards HTML not found, try to extract from text (rare fallback)
+            try:
+                obj = json.loads(text)
+                html = extract_listingcards_html_from_response(obj)
+            except Exception:
+                html = None
+
+        if not html or not html.strip():
+            return None
+
+        html_path = helpers_dir / "listingcards_cleaned_single_chunk_1.html"
+        write_text(str(html_path), html)
+        return html_path
+    except Exception:
+        return None
+
+def write_single_listing_helpers(run_dir: Path, listing_id: int, title: Optional[str], page_url: Optional[str], image: Optional[Dict], keyword_slug: Optional[str] = None) -> Path:
+    """
+    Write helpers HTML under run_dir/helpers, naming like listingcards_cleaned_{keyword_or_single}_chunk_1.html.
+    Returns the path to the written HTML.
+    """
+    helpers_dir = Path(run_dir) / "helpers"
+    ensure_output_dir(str(helpers_dir))
+    fname_slug = (keyword_slug or "single")
+    html_path = helpers_dir / f"listingcards_cleaned_{fname_slug}_chunk_1.html"
+    html_str = generate_listing_card_html(int(listing_id), title, page_url, image)
+    write_text(str(html_path), html_str)
+    return html_path
 
 # --- cURL parsing and multi-request execution ---
 def parse_curl_file(path: str) -> Tuple[str, str, Dict[str, str], Dict, Optional[str]]:

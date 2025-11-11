@@ -12,7 +12,13 @@ try:
     from dotenv import load_dotenv
 except Exception:
     load_dotenv = None
-
+from first_etsy_api_use import (
+    fetch_listing_details_by_ids,
+    fetch_shop_info,
+    generate_listing_card_html,             # NEW: used for fallback HTML
+    fetch_listing_primary_image,            # NEW: Open API primary image fetch
+    write_single_listing_helpers_via_curl,  # NEW: run curl_original with single listing_id
+)
 # Make Helpers importable if the script is run outside the folder
 CURRENT_FILE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = CURRENT_FILE_DIR.parent
@@ -69,7 +75,7 @@ def run_replace_listing(listing_id: int, user_id: str, session_id: str, forced_p
     user_id_slug = slugify_safe(user_id)
     sess_id_slug = slugify_safe(session_id)
 
-    compiled = compile_single_listing(lid, forced_personalize)
+    compiled = compile_single_listing(lid, forced_personalize, skip_ai_keywords=True)
     compiled.setdefault("meta", {})["session_id"] = sess_id_slug
     compiled.setdefault("meta", {})["user_id"] = user_id_slug
 
@@ -99,25 +105,21 @@ def run_replace_listing(listing_id: int, user_id: str, session_id: str, forced_p
     try:
         idx = next((i for i, e in enumerate(entries) if int(e.get("listing_id") or 0) == lid), None)
         if idx is None:
+            # No prior entry: add fresh entry as-is
             entries.append(new_entry)
         else:
             prev_entry = entries[idx]
-            prev_source_paths = prev_entry.get("source_paths")
-            if prev_source_paths is not None:
-                new_entry["source_paths"] = prev_source_paths
-            entries[idx] = new_entry
+            # Merge values while preserving primary_image, source_paths, and listing_id
+            merged = _merge_entry_preserving_primary_image(prev_entry, new_entry)
+            entries[idx] = merged
 
         mega["entries"] = entries
         write_json_atomic(megafile_path, mega)
     finally:
         lock.release()
 
-    return {
-        "megafile_path": str(megafile_path),
-        "megafile": mega,
-        "listing_id": lid,
-        "updated": True,
-    }
+    # Return raw megafile JSON (no wrappers)
+    return mega
 
 def ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
@@ -269,11 +271,11 @@ def _to_megafile_entry(compiled: Dict[str, Any]) -> Dict[str, Any]:
     listing_id = compiled.get("listing_id")
     title = compiled.get("title")
     entry = {
-        "listing_id": listing_id,
-        "title": title,
+        "listing_id": compiled.get("listing_id"),
+        "title": compiled.get("title"),
         "popular_info": compiled.get("popular_info"),
         "signals": compiled.get("signals"),
-        "demand_value": compiled.get("demand_value"),
+        "demand": compiled.get("demand"),
         "demand_extras": compiled.get("demand_extras"),
         "keywords": compiled.get("keywords") or [],
         "everbee": {"results": (compiled.get("everbee") or {}).get("results") or []},
@@ -295,7 +297,58 @@ def _to_megafile_entry(compiled: Dict[str, Any]) -> Dict[str, Any]:
     }
     return entry
 
-def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] = None) -> Dict[str, Any]:
+# Merge helper: updates values while preserving structure and primary image
+def _merge_entry_preserving_primary_image(prev_entry: Dict[str, Any], new_entry: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Merge new_entry values into prev_entry while preserving structure and
+    keeping primary_image, source_paths, and listing_id exactly as-is.
+    Only updates keys that already exist in prev_entry.
+    """
+    merged = dict(prev_entry)
+    # Preserve additional fields exactly: sale_info and keywords stay untouched
+    skip_keys = {"primary_image", "source_paths", "listing_id", "sale_info", "keywords"}
+
+    for key in list(merged.keys()):
+        if key in skip_keys:
+            continue
+
+        if key == "everbee":
+            prev_ev = merged.get("everbee")
+            new_ev = new_entry.get("everbee")
+            if isinstance(prev_ev, dict):
+                if isinstance(new_ev, dict) and "results" in new_ev:
+                    new_results = new_ev.get("results") or []
+                    # Only update if non-empty to avoid wiping previous results
+                    if isinstance(new_results, list) and len(new_results) > 0:
+                        prev_ev["results"] = new_results
+                merged["everbee"] = prev_ev
+            elif new_ev is not None:
+                merged["everbee"] = new_ev
+            continue
+
+        if key in new_entry:
+            val = new_entry.get(key)
+            if val is not None:
+                merged[key] = val
+
+    # Canonicalize demand: always use 'demand'
+    new_demand = new_entry.get("demand", new_entry.get("demand_value"))
+    if "demand" in merged:
+        if new_demand is not None:
+            merged["demand"] = new_demand
+    elif "demand_value" in merged:
+        merged["demand"] = new_demand if new_demand is not None else merged.get("demand_value")
+        try:
+            del merged["demand_value"]
+        except Exception:
+            pass
+
+    if "timestamp" in new_entry:
+        merged["timestamp"] = new_entry["timestamp"]
+
+    return merged
+
+def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] = None, skip_ai_keywords: bool = False) -> Dict[str, Any]:
     """
     Orchestrates the single-listing pipeline and returns the compiled payload,
     also saving artifacts under outputs/single_search_{listing_id}_{ts}/.
@@ -318,7 +371,7 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
         "popular_info": None,
         "shop": None,
         "signals": None,
-        "demand_value": None,
+        "demand": None,
         "demand_extras": None,
         "primary_image": None,
         "variations_cleaned": None,
@@ -344,7 +397,53 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
     compiled["title"] = normalized.get("title")
     compiled["url"] = normalized.get("url")
 
-    # Apply user-forced personalization override if provided: create a local popular override
+    # NEW: Pre-demand helpers via real listingCards cURL; fallback to synthetic if it fails
+    primary_img: Optional[Dict[str, Any]] = None
+    try:
+        primary_img = fetch_listing_primary_image(int(listing_id)) or None
+    except Exception as e:
+        compiled.setdefault("errors", {})["primary_image_fetch"] = str(e)
+
+    try:
+        # Try to generate helpers by running curl_original with single listing_id
+        helpers_html_path = write_single_listing_helpers_via_curl(Path(run_dir), int(listing_id))
+        if helpers_html_path:
+            compiled.setdefault("meta", {})["helpers_dir"] = str(Path(run_dir) / "helpers")
+            compiled.setdefault("meta", {})["listingcards_cleaned_path"] = str(helpers_html_path)
+        else:
+            # Fallback: synthesize minimal listing card HTML using Open API image
+            helpers_dir = Path(run_dir) / "helpers"
+            ensure_dir(helpers_dir)
+            html_path = helpers_dir / "listingcards_cleaned_single_chunk_1.html"
+            html_str = generate_listing_card_html(
+                int(listing_id),
+                compiled.get("title"),
+                compiled.get("url"),
+                primary_img,
+            )
+            html_path.write_text(html_str, encoding="utf-8")
+            compiled.setdefault("meta", {})["helpers_dir"] = str(helpers_dir)
+            compiled.setdefault("meta", {})["listingcards_cleaned_path"] = str(html_path)
+    except Exception as e:
+        compiled.setdefault("errors", {})["helpers_write"] = str(e)
+        # Fallback on error as well
+        try:
+            helpers_dir = Path(run_dir) / "helpers"
+            ensure_dir(helpers_dir)
+            html_path = helpers_dir / "listingcards_cleaned_single_chunk_1.html"
+            html_str = generate_listing_card_html(
+                int(listing_id),
+                compiled.get("title"),
+                compiled.get("url"),
+                primary_img,
+            )
+            html_path.write_text(html_str, encoding="utf-8")
+            compiled.setdefault("meta", {})["helpers_dir"] = str(helpers_dir)
+            compiled.setdefault("meta", {})["listingcards_cleaned_path"] = str(html_path)
+        except Exception as e2:
+            compiled.setdefault("errors", {})["helpers_fallback_write"] = str(e2)
+
+    # Apply user-forced personalization override if provided
     if forced_personalize is not None:
         compiled.setdefault("meta", {}).setdefault("overrides", {})["forced_personalization"] = (
             "personalise" if forced_personalize else "non_personalise"
@@ -375,17 +474,17 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
         except Exception as e:
             compiled.setdefault("errors", {})["shop_info"] = str(e)
 
-    # 3) Demand extractor
+    # 3) Demand extractor (consumes helpers and writes primary image JSON)
     try:
         demand_summary = process_listing_demand(int(listing_id), Path(run_dir), Path(outputs_dir))
         compiled["signals"] = {
             "scarcity_title": demand_summary.get("scarcity_title"),
         }
-        compiled["demand_value"] = demand_summary.get("demand_value")
+        # Map extractor's demand_value to canonical 'demand'
+        compiled["demand"] = demand_summary.get("demand_value")
 
         base_out_dir = Path(demand_summary.get("out_dir") or outputs_dir)
 
-        # primary image info saved by demand flow
         img_path = base_out_dir / "listingcard_primary_image.json"
         if img_path.exists():
             try:
@@ -393,7 +492,6 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
             except Exception:
                 compiled["primary_image"] = None
 
-        # variations cleaned JSON (if present)
         var_path = base_out_dir / "variations_cleaned.json"
         if var_path.exists():
             try:
@@ -401,7 +499,6 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
             except Exception:
                 compiled["variations_cleaned"] = None
 
-        # structured sale info (if present)
         sale_path = base_out_dir / "listing_sale_info.json"
         if sale_path.exists():
             try:
@@ -409,7 +506,6 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
             except Exception:
                 compiled["sale_info"] = None
 
-        # demand extras (if present)
         extras_path = base_out_dir / "extras_from_listing.json"
         if extras_path.exists():
             try:
@@ -420,9 +516,13 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
     except Exception as e:
         compiled.setdefault("errors", {})["demand_extractor"] = str(e)
 
+    # Fallback: if demand didn't produce a primary image, use the one fetched pre-demand
+    if compiled.get("primary_image") in (None, {}) and primary_img:
+        compiled["primary_image"] = primary_img
+
     # 4) AI Keywords for the title
     title = compiled.get("title")
-    if isinstance(title, str) and title.strip():
+    if not skip_ai_keywords and isinstance(title, str) and title.strip():
         try:
             kws = generate_keywords_for_title_api(title)
             compiled["keywords"] = kws
@@ -444,13 +544,13 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
     except Exception:
         pass
 
-    # Save compiled JSON under Helpers and run_dir outputs for traceability
+    # Save compiled JSON under run_dir outputs for traceability
     out_path = outputs_dir / "popular_listings_full_pdf.json"
     write_json_atomic(out_path, compiled)
 
     compiled.setdefault("meta", {})["compiled_path"] = str(out_path)
     return compiled
-
+    
 def update_listing_api_flow() -> None:
     """
     Flow:

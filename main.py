@@ -134,6 +134,92 @@ async def api_single_search(payload: SingleSearchRequest):
         # Keep a simple error wrapper for failures
         return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
 
+
+def _resolve_session_meta_path(user_id: str, session_id: str) -> Optional[Path]:
+    """
+    Find the session meta file robustly:
+    - Try slugified (main's slugify), raw, and a "strict" slug without dashes.
+    - Fallback: scan all files in sessions dir and match JSON's session_id.
+    """
+    try:
+        users_root = Path(USERS_DIR)
+        user_slug = slugify_safe(user_id)
+        sessions_dir = users_root / user_slug / "sessions"
+        if not sessions_dir.exists():
+            return None
+
+        # Candidates by naming strategies
+        candidates = []
+        # a) main's slugify (may remove/keep dashes based on etsy.slugify_keyword)
+        candidates.append(sessions_dir / f"{slugify_safe(session_id)}.json")
+        # b) raw session id as filename
+        candidates.append(sessions_dir / f"{session_id}.json")
+        # c) strict slug: only alnum, no dashes
+        strict = "".join(ch.lower() for ch in session_id if ch.isalnum())
+        if strict:
+            candidates.append(sessions_dir / f"{strict}.json")
+
+        for c in candidates:
+            if c.exists():
+                return c
+
+        # d) Fallback: scan and match JSON content
+        for p in sessions_dir.glob("*.json"):
+            try:
+                with p.open("r", encoding="utf-8") as f:
+                    doc = json.load(f)
+                if doc.get("session_id") == session_id:
+                    return p
+            except Exception:
+                continue
+        return None
+    except Exception:
+        return None
+
+def _find_megafile_for_user_session(user_id: str, session_id: str) -> Optional[str]:
+    """
+    Resolve megafile path using the meta file's run_root_dir.
+    Works even when the meta filename uses a different slug than the provided session_id.
+    """
+    try:
+        meta_path = _resolve_session_meta_path(user_id, session_id)
+        if not meta_path or not meta_path.exists():
+            return None
+        with meta_path.open("r", encoding="utf-8") as f:
+            doc = json.load(f)
+        rr = doc.get("run_root_dir") or (doc.get("meta") or {}).get("run_root_dir")
+        if not rr:
+            return None
+        base = Path(rr) / "outputs"
+        if not base.exists():
+            return None
+        # Prefer explicit christmas megafile if present, else any megafile_listings_*.json
+        explicit = base / "megafile_listings_christmas.json"
+        if explicit.exists():
+            return str(explicit)
+        candidates = sorted(base.glob("megafile_listings_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+        return str(candidates[0]) if candidates else None
+    except Exception:
+        return None
+
+_FILE_LOCKS: Dict[str, any] = {}
+
+def _get_lock_for(path: Path):
+    key = str(Path(path).resolve())
+    import threading
+    lock = _FILE_LOCKS.get(key)
+    if lock is None:
+        lock = threading.Lock()
+        _FILE_LOCKS[key] = lock
+    return lock
+
+def _write_json_atomic(path: Path, obj: Dict[str, any]) -> None:
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tmp.open("w", encoding="utf-8") as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+    tmp.replace(path)
+
 @app.post("/replace-listing")
 async def api_replace_listing(payload: ReplaceListingRequest):
     """
@@ -144,38 +230,86 @@ async def api_replace_listing(payload: ReplaceListingRequest):
     """
     loop = asyncio.get_running_loop()
     try:
-        result = await loop.run_in_executor(
+        # Compile the single listing (heavy work off main thread)
+        compiled = await loop.run_in_executor(
             EXECUTOR,
-            ss.run_replace_listing,
+            ss.compile_single_listing,
             int(payload.listing_id),
-            payload.user_id,
-            payload.session_id,
             payload.forced_personalize,
+            True,  # skip_ai_keywords for replace
         )
+        # attach meta context
+        compiled.setdefault("meta", {})["session_id"] = payload.session_id
+        compiled.setdefault("meta", {})["user_id"] = payload.user_id
 
-        # Organize session meta for replace-listing run
+        # Keep example.json for traceability
+        try:
+            example_path = (PROJECT_ROOT / "Helpers" / "example.json")
+            _write_json_atomic(example_path, compiled)
+        except Exception:
+            pass
+
+        # Resolve megafile path using robust session meta lookup
+        mf_path_str = _find_megafile_for_user_session(payload.user_id, payload.session_id)
+        if not mf_path_str:
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "error": (
+                        "Could not find megafile via user/session. "
+                        f"Checked: {USERS_DIR}/{slugify_safe(payload.user_id)}/sessions/{slugify_safe(payload.session_id)}.json "
+                        f"and outputs/{slugify_safe(payload.session_id)}/outputs/. "
+                        "Also scanned sessions dir and matched by session_id."
+                    )
+                },
+                status_code=404,
+            )
+        mf_path = Path(mf_path_str)
+
+        # Load and update entries, preserving source_paths; concurrency-safe write
+        try:
+            with mf_path.open("r", encoding="utf-8") as f:
+                mega = json.load(f)
+        except Exception:
+            mega = {"entries": []}
+
+        entries = mega.get("entries") or []
+        new_entry = ss._to_megafile_entry(compiled)
+        lock = _get_lock_for(mf_path)
+        lock.acquire()
+        try:
+            idx = next((i for i, e in enumerate(entries) if int(e.get("listing_id") or 0) == int(payload.listing_id)), None)
+            if idx is None:
+                entries.append(new_entry)
+            else:
+                prev_entry = entries[idx]
+                # Merge values while preserving primary_image, source_paths, and listing_id
+                merged = ss._merge_entry_preserving_primary_image(prev_entry, new_entry)
+                entries[idx] = merged
+
+            mega["entries"] = entries
+            _write_json_atomic(mf_path, mega)
+        finally:
+            lock.release()
+
+        # Organize session meta for replace-listing run (non-fatal)
         try:
             update_session_meta_file(
                 payload.user_id,
                 payload.session_id,
                 last_action="replace_listing",
-                last_megafile_path=result.get("megafile_path"),
+                last_megafile_path=str(mf_path),
                 last_updated_listing_id=int(payload.listing_id),
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
             )
         except Exception as meta_err:
             print(f"[replace-listing] Failed to update session meta: {meta_err}", flush=True)
 
-        return JSONResponse(content={
-            "success": True,
-            "megafile_path": result.get("megafile_path"),
-            "megafile": result.get("megafile"),
-            "listing_id": result.get("listing_id"),
-        })
-    except FileNotFoundError as e:
-        return JSONResponse(content={"success": False, "error": str(e)}, status_code=404)
+        # Return raw megafile JSON exactly (no wrapper)
+        return JSONResponse(content=mega)
     except Exception as e:
         return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
+
 @app.post("/reconnect/stream")
 def reconnect_stream(payload: ReconnectRequest):
     import json, time, queue
@@ -190,8 +324,19 @@ def reconnect_stream(payload: ReconnectRequest):
 
     # If no active session, return raw megafile JSON if present; else emit a 'complete' SSE without megafile
     if not sess or sess.get("status") in (None, "completed", "error"):
-        slug = slugify_safe(keyword)
-        mf_path = (sess or {}).get("megafile_path") or _find_latest_megafile_for_slug(slug)
+        # First, resolve via user/session meta file (preferred)
+        mf_path = _find_megafile_for_user_session(user_id, session_id)
+        if not mf_path:
+            # Fallback to any megafile tracked in memory
+            mf_path = (sess or {}).get("megafile_path")
+
+        if not mf_path:
+            # Final fallback: by keyword slug, if helper exists
+            slug = slugify_safe(keyword)
+            try:
+                mf_path = _find_latest_megafile_for_slug(slug)
+            except Exception:
+                mf_path = None
 
         if mf_path:
             try:
