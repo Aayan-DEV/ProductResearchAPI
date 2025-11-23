@@ -520,6 +520,11 @@ def reconnect_stream(payload: ReconnectRequest):
         background=BackgroundTask(_notify_sse_closed_active),
     )
 
+@app.get("/reconnect/stream")
+def reconnect_stream_get(user_id: str, keyword: str, session_id: str):
+    payload = ReconnectRequest(user_id=user_id, keyword=keyword, session_id=session_id)
+    return reconnect_stream(payload)
+
 def ensure_model_available() -> Dict[str, any]:
     """
     Ensure the GGUF model exists at MODEL_PATH.
@@ -2245,6 +2250,11 @@ def run_stream(payload: RunRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
+
+@app.get("/run/stream")
+def run_stream_get(user_id: str, keyword: str, session_id: str, desired_total: Optional[int] = None):
+    payload = RunRequest(user_id=user_id, keyword=keyword, desired_total=desired_total, session_id=session_id)
+    return run_stream(payload)
 
 @app.get("/health")
 def health() -> Dict:
