@@ -161,6 +161,11 @@ def parse_curl_file(curl_file_path: Path) -> Tuple[str, Dict[str, str]]:
             cookie_value = m_cookie.group(1).strip()
             continue
 
+        m_cookie_short = re.match(r"-b\s+'(.+)'\s*", line)
+        if m_cookie_short:
+            cookie_value = m_cookie_short.group(1).strip()
+            continue
+
     if not base_url:
         raise ValueError("Could not extract URL from curl file")
 
@@ -201,10 +206,25 @@ def extract_metrics_from_response(resp_json: Dict[str, Any]) -> Dict[str, Any]:
       - competition: stats.avgTotalListings
     """
     metrics = {"vol": None, "competition": None}
-    stats = resp_json.get("stats", {})
+
+    def pick_stats(obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not isinstance(obj, dict):
+            return None
+        s = obj.get("stats")
+        if isinstance(s, dict):
+            return s
+        for key in ("data", "response", "payload", "result", "results"):
+            cont = obj.get(key)
+            if isinstance(cont, dict):
+                s2 = cont.get("stats")
+                if isinstance(s2, dict):
+                    return s2
+        return None
+
+    stats = pick_stats(resp_json) or {}
     if isinstance(stats, dict):
-        metrics["vol"] = stats.get("searchVolume")
-        metrics["competition"] = stats.get("avgTotalListings")
+        metrics["vol"] = stats.get("searchVolume") or stats.get("search_volume")
+        metrics["competition"] = stats.get("avgTotalListings") or stats.get("avg_total_listings") or stats.get("totalListings")
     return metrics
 
 # ------------------------------
