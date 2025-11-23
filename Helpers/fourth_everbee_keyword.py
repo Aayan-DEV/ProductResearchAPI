@@ -425,8 +425,10 @@ def main() -> None:
             if best_key and best_score >= 0.55:
                 product_keywords = keywords_map.get(best_key, [])
 
-        print(f"\n[{idx+1}/{num_products}] listing_id={listing_id} | group={group} | title={final_title}")
+        # Ensure we never fetch metrics for the raw title itself
+        product_keywords = [kw for kw in product_keywords if normalize_title(kw) != nt]
 
+        print(f"\n[{idx+1}/{num_products}] listing_id={listing_id} | group={group} | title={final_title}")
         product_result = {
             "listing_id": listing_id,
             "group": group,

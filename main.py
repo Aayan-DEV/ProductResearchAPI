@@ -10,10 +10,12 @@ from dotenv import load_dotenv
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
+from starlette.background import BackgroundTask
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import asyncio
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi import FastAPI, BackgroundTasks
 
 # Ensure Helpers are importable and import singlesearch helper
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -178,8 +180,9 @@ def _resolve_session_meta_path(user_id: str, session_id: str) -> Optional[Path]:
 
 def _find_megafile_for_user_session(user_id: str, session_id: str) -> Optional[str]:
     """
-    Resolve megafile path using the meta file's run_root_dir.
-    Works even when the meta filename uses a different slug than the provided session_id.
+    Resolve megafile path using the session meta file:
+    - Prefer direct paths stored in meta: last_ranked_megafile_path, last_megafile_path, megafile_path.
+    - If not present or missing on disk, fallback to run_root_dir/outputs and prefer ranked files.
     """
     try:
         meta_path = _resolve_session_meta_path(user_id, session_id)
@@ -187,18 +190,46 @@ def _find_megafile_for_user_session(user_id: str, session_id: str) -> Optional[s
             return None
         with meta_path.open("r", encoding="utf-8") as f:
             doc = json.load(f)
-        rr = doc.get("run_root_dir") or (doc.get("meta") or {}).get("run_root_dir")
-        if not rr:
-            return None
-        base = Path(rr) / "outputs"
-        if not base.exists():
-            return None
-        # Prefer explicit christmas megafile if present, else any megafile_listings_*.json
-        explicit = base / "megafile_listings_christmas.json"
-        if explicit.exists():
-            return str(explicit)
-        candidates = sorted(base.glob("megafile_listings_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
-        return str(candidates[0]) if candidates else None
+
+        # Prefer direct paths in session meta (ranked first)
+        meta_block = doc.get("meta") or {}
+        candidates_direct: List[str] = []
+        for key in ("last_ranked_megafile_path", "last_megafile_path", "megafile_path"):
+            v = doc.get(key) or meta_block.get(key)
+            if isinstance(v, str) and v.strip():
+                candidates_direct.append(v.strip())
+
+        for pstr in candidates_direct:
+            try:
+                p = Path(pstr)
+                if p.exists() and p.is_file():
+                    return str(p)
+            except Exception:
+                continue
+
+        # Fallback to run_root_dir/outputs, prefer ranked, else latest normal
+        rr = doc.get("run_root_dir") or meta_block.get("run_root_dir")
+        if rr:
+            base = Path(rr) / "outputs"
+            if base.exists():
+                # Prefer ranked megafile
+                ranked_candidates = sorted(
+                    base.glob("megafile_listings_*_ranked.json"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                if ranked_candidates:
+                    return str(ranked_candidates[0])
+
+                candidates = sorted(
+                    base.glob("megafile_listings_*.json"),
+                    key=lambda p: p.stat().st_mtime,
+                    reverse=True,
+                )
+                if candidates:
+                    return str(candidates[0])
+
+        return None
     except Exception:
         return None
 
@@ -305,8 +336,37 @@ async def api_replace_listing(payload: ReplaceListingRequest):
         except Exception as meta_err:
             print(f"[replace-listing] Failed to update session meta: {meta_err}", flush=True)
 
-        # Return raw megafile JSON exactly (no wrapper)
-        return JSONResponse(content=mega)
+        # Rank the megafile and return the ranked JSON
+        try:
+            import ranking as rnk
+            print("[ranking] Ranking megafile before sending...", flush=True)
+            ranked_path = rnk.rank_megafile(str(mf_path))
+            print(f"[ranking] Ranked megafile created: {ranked_path}", flush=True)
+            try:
+                update_session_meta_file(
+                    payload.user_id,
+                    payload.session_id,
+                    last_action="replace_listing_ranked",
+                    last_megafile_path=str(mf_path),
+                    last_ranked_megafile_path=str(ranked_path),
+                    last_updated_listing_id=int(payload.listing_id),
+                    timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+                )
+            except Exception as meta_err:
+                print(f"[replace-listing] Failed to update session meta (ranked): {meta_err}", flush=True)
+
+            with open(ranked_path, "r", encoding="utf-8") as f:
+                ranked_json = json.load(f)
+
+            print("[ranking] Sending ranked megafile JSON to client.", flush=True)
+            def _notify_sent_replace():
+                print("[ranking] Sent ranked megafile JSON to client (replace-listing).", flush=True)
+            return JSONResponse(content=ranked_json, background=BackgroundTask(_notify_sent_replace))
+        except Exception as e:
+            print(f"[ranking] Ranking failed; sending unranked megafile. Error: {e}", flush=True)
+            def _notify_sent_unranked():
+                print("[ranking] Sent unranked megafile JSON to client (replace-listing).", flush=True)
+            return JSONResponse(content=mega, background=BackgroundTask(_notify_sent_unranked))
     except Exception as e:
         return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
 
@@ -340,14 +400,64 @@ def reconnect_stream(payload: ReconnectRequest):
 
         if mf_path:
             try:
-                with open(mf_path, "r", encoding="utf-8") as f:
-                    mf_json = json.load(f)
-                return JSONResponse(content=mf_json)
-            except Exception as e:
-                return JSONResponse(
-                    content={"error": f"Failed to load megafile: {str(e)}", "path": mf_path},
-                    status_code=500,
+                p = Path(mf_path)
+                # If already ranked, just read and send (no rebuild)
+                if p.name.endswith("_ranked.json"):
+                    with p.open("r", encoding="utf-8") as f:
+                        mf_json = json.load(f)
+                    print("[ranking] Reconnect: sending ranked megafile JSON (no rebuild).", flush=True)
+                    def _notify_sent_reconnect_ranked():
+                        print("[ranking] Reconnect: ranked megafile JSON sent.", flush=True)
+                    return JSONResponse(content=mf_json, background=BackgroundTask(_notify_sent_reconnect_ranked))
+
+                # Try sibling ranked without recomputing
+                ranked_candidate = (
+                    p.with_name(p.stem + "_ranked.json")
+                    if p.suffix.lower() == ".json"
+                    else p.with_name(p.name + "_ranked")
                 )
+                if ranked_candidate.exists():
+                    with ranked_candidate.open("r", encoding="utf-8") as f:
+                        mf_json = json.load(f)
+                    print(f"[ranking] Reconnect: using existing ranked file: {ranked_candidate}", flush=True)
+                    def _notify_sent_reconnect_sibling():
+                        print("[ranking] Reconnect: ranked megafile JSON sent (existing sibling).", flush=True)
+                    return JSONResponse(content=mf_json, background=BackgroundTask(_notify_sent_reconnect_sibling))
+
+                # Fallback: build ranked once, then return and persist path in session meta
+                import ranking as rnk
+                print("[ranking] Reconnect: no ranked file found; ranking once.", flush=True)
+                ranked_path = rnk.rank_megafile(str(p))
+                try:
+                    update_session_meta_file(
+                        user_id,
+                        session_id,
+                        last_ranked_megafile_path=str(ranked_path),
+                        last_megafile_path=str(p),
+                        last_action="reconnect_ranked",
+                        timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+                    )
+                except Exception:
+                    pass
+                with open(ranked_path, "r", encoding="utf-8") as f:
+                    mf_json = json.load(f)
+                print("[ranking] Reconnect: sending ranked megafile JSON.", flush=True)
+                def _notify_sent_reconnect_new():
+                    print("[ranking] Reconnect: ranked megafile JSON sent (newly built).", flush=True)
+                return JSONResponse(content=mf_json, background=BackgroundTask(_notify_sent_reconnect_new))
+            except Exception as e:
+                print(f"[ranking] Reconnect: ranking failed; sending unranked. Error: {e}", flush=True)
+                try:
+                    with open(mf_path, "r", encoding="utf-8") as f:
+                        mf_json = json.load(f)
+                    def _notify_sent_reconnect_unranked():
+                        print("[ranking] Reconnect: unranked megafile JSON sent.", flush=True)
+                    return JSONResponse(content=mf_json, background=BackgroundTask(_notify_sent_reconnect_unranked))
+                except Exception as e2:
+                    return JSONResponse(
+                        content={"error": f"Failed to load megafile: {str(e2)}", "path": mf_path},
+                        status_code=500,
+                    )
 
         def sse_done():
             ev = {
@@ -362,10 +472,14 @@ def reconnect_stream(payload: ReconnectRequest):
             }
             yield f"data: {json.dumps(ev)}\n\n"
 
+        def _notify_sse_closed_no_megafile():
+            print("[reconnect] SSE stream closed (no megafile).", flush=True)
+
         return StreamingResponse(
             sse_done(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+            background=BackgroundTask(_notify_sse_closed_no_megafile),
         )
 
     # Active session: subscribe and stream future events
@@ -396,10 +510,14 @@ def reconnect_stream(payload: ReconnectRequest):
         finally:
             _session_unsubscribe(key, sub_q)
 
+    def _notify_sse_closed_active():
+        print("[reconnect] SSE stream closed (active session).", flush=True)
+
     return StreamingResponse(
         sse_iter(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        background=BackgroundTask(_notify_sse_closed_active),
     )
 
 def ensure_model_available() -> Dict[str, any]:
@@ -2046,24 +2164,35 @@ def run_stream(payload: RunRequest):
             # Attach full megafile JSON to the completion event
             megafile_json = None
             megafile_path = None
+            used_ranked = False
             try:
                 mp = (res.get("meta") or {}).get("megafile_path")
                 if mp:
                     megafile_path = mp
-                    with open(mp, "r", encoding="utf-8") as f:
+                    import ranking as rnk
+                    print("[ranking] Run: ranking megafile before completion event...", flush=True)
+                    ranked_path = rnk.rank_megafile(str(mp))
+                    print(f"[ranking] Run: ranked megafile created: {ranked_path}", flush=True)
+                    with open(ranked_path, "r", encoding="utf-8") as f:
                         megafile_json = json.load(f)
+                    used_ranked = True
+                    try:
+                        update_session_meta_file(user_id, session_id, last_ranked_megafile_path=str(ranked_path))
+                    except Exception as meta_err:
+                        print(f"[run_stream] Failed to update session meta (ranked): {meta_err}", flush=True)
+                else:
+                    megafile_json = None
             except Exception as e:
-                megafile_json = {"error": f"Failed to load megafile: {str(e)}"}
+                print(f"[ranking] Run: ranking failed; sending unranked. Error: {e}", flush=True)
+                try:
+                    if megafile_path:
+                        with open(megafile_path, "r", encoding="utf-8") as f:
+                            megafile_json = json.load(f)
+                    else:
+                        megafile_json = {"error": f"Failed to locate megafile: {str(e)}"}
+                except Exception as e2:
+                    megafile_json = {"error": f"Failed to load megafile: {str(e2)}"}
 
-            # Persist the run folder path into the session JSON
-            try:
-                rr = (res.get("meta") or {}).get("run_root_dir")
-                if rr:
-                    update_session_meta_file(user_id, session_id, run_root_dir=rr)
-            except Exception:
-                pass
-
-            # Mark session complete and emit
             _session_update_meta(
                 key,
                 status="completed",
@@ -2071,6 +2200,10 @@ def run_stream(payload: RunRequest):
                 megafile_path=megafile_path,
                 run_root_dir=(res.get("meta") or {}).get("run_root_dir"),
             )
+            if used_ranked:
+                print("[ranking] Run: sending ranked megafile JSON in completion event.", flush=True)
+            else:
+                print("[ranking] Run: sending unranked megafile JSON in completion event.", flush=True)
             emit({"type": "complete", "success": res.get("success"), "result": res, "megafile": megafile_json})
         except Exception as e:
             _session_update_meta(key, status="error", ended_at=time.time())
@@ -2206,12 +2339,15 @@ def run(payload: RunRequest) -> Dict:
         if isinstance(result, dict) and result.get("success") is True:
             try:
                 import json
+                import ranking as rnk
                 megafile_path = (result.get("meta") or {}).get("megafile_path")
                 if not megafile_path:
                     return {"success": False, "error": "megafile_path missing from result"}
-                with open(megafile_path, "r", encoding="utf-8") as f:
+                print("[ranking] Run: ranking megafile before returning response...", flush=True)
+                ranked_path = rnk.rank_megafile(str(megafile_path))
+                print(f"[ranking] Run: ranked megafile created: {ranked_path}", flush=True)
+                with open(ranked_path, "r", encoding="utf-8") as f:
                     doc = json.load(f)
-                # NEW: ensure zero-case is explicit if meta missing
                 entries = doc.get("entries") or []
                 meta = doc.get("meta") or {}
                 if "processed_total" not in meta:
@@ -2219,9 +2355,21 @@ def run(payload: RunRequest) -> Dict:
                 if "popular_count" not in meta:
                     meta["popular_count"] = len(entries)
                 doc["meta"] = meta
+                try:
+                    # session_id is part of RunRequest
+                    update_session_meta_file(payload.user_id.strip(), payload.session_id.strip(), last_ranked_megafile_path=str(ranked_path))
+                except Exception as meta_err:
+                    print(f"[run] Failed to update session meta (ranked): {meta_err}", flush=True)
+                print("[ranking] Run: sending ranked megafile JSON.", flush=True)
                 return doc
             except Exception as e:
-                return {"success": False, "error": f"Failed to load megafile: {e}"}
+                print(f"[ranking] Run: ranking failed; sending unranked. Error: {e}", flush=True)
+                try:
+                    with open(megafile_path, "r", encoding="utf-8") as f:
+                        doc = json.load(f)
+                    return doc
+                except Exception as e2:
+                    return {"success": False, "error": f"Failed to load megafile: {e2}"}
 
         # If not a full success, return the orchestrator response (contains error details)
         return result
@@ -2295,4 +2443,4 @@ def run_script(payload: RunScriptRequest) -> Dict:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8001")))

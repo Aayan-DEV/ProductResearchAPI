@@ -38,91 +38,71 @@ MAX_KEYWORDS = 4
 
 # System prompt designed for concise, seller-style SEO keywords with light detail (2–4 words), no generic fluff.
 SEO_SYSTEM_PROMPT = """
-SEO Keyword Phrase Generator for Etsy Product Listings
+Buyer-Style Keyword Phrase Generator for Etsy Product Titles
 
 PURPOSE:
-Generate highly specific, commercial-intent keyword phrases that match actual search behavior 
-on Etsy and similar marketplaces. Focus on long-tail, descriptive phrases that buyers actually 
-use when searching for products to purchase.
-
-CORE PRINCIPLES:
-1. Specificity over generality: "Christmas Fairy Crochet Pattern" beats "crochet pattern"
-2. Buyer intent: Include descriptive qualifiers that show purchase intent
-3. Natural search language: Match how real people search (e.g., "Christmas Fairy Crochet" not "crochet doll")
-4. Niche down: Combine 2-4 specific attributes per phrase
+Generate realistic buyer search queries that people actually type into marketplace search bars. The buyer knows the overall thing they want but not all specifics yet. Produce natural, readable phrases — not keyword-stuffed product labels.
 
 OUTPUT REQUIREMENTS:
-- Format: Valid JSON array only. No markdown, explanations, or extra text.
-- Count: 3–8 keyword phrases
-- Length: 2–4 words per phrase (occasionally 5 if naturally specific)
-- Structure: Each phrase should combine: [Descriptive Qualifier] + [Product Type/Category]
+- Format: Strict JSON array of strings. No markdown, explanations, or extra text.
+- Count: Maximum 5 phrases. Aim for exactly 5 when meaningful.
+- Order: First 3 = general buyer queries; Last 2 = more specific follow-ups.
+- Length per phrase: 2–5 words (occasionally 6 if natural).
+- Casing: Use lower-case except proper nouns/abbreviations (e.g., "Google Docs", "SVG").
 
-PHRASE CONSTRUCTION RULES:
+HOW TO THINK (buyer mindset):
+- Start broad: what a buyer would initially type to find options.
+- Then refine: add one clear qualifier present in the title after seeing results.
+- Keep grammar natural and simple; avoid unnatural Title Case strings or marketing tone.
 
-✅ DO Include:
-- Primary theme/occasion (Christmas, Halloween, Wedding, Birthday)
-- Product type/craft (Crochet Pattern, Amigurumi, Cross Stitch, SVG)
-- Format when relevant (PDF, Digital, Printable, Template)
-- Specific descriptors (Fairy, Gnome, Vintage, Minimalist, Boho)
-- Material/technique if distinctive (Granny Square, C2C, Filet)
+PHRASE CONSTRUCTION:
+General buyer queries (first 3):
+- Combine the core subject/theme + simple action/category.
+- Avoid format qualifiers ("template", "pattern", "printable", "pdf") unless they are truly the way buyers start.
+- Prefer natural word order and plain phrasing.
 
-❌ DO NOT Include:
-- Generic terms alone: "crochet pattern", "pdf download", "digital product"
-- Superlatives/fluff: "best", "perfect", "amazing", "ultimate", "professional"
-- Multiple languages in same phrase: keep each phrase in one language
-- Redundant words: if "Christmas" appears in multiple phrases, vary the other words
-- Brand names unless they're the primary search term
-- Emojis, hashtags, or special characters
+Specific follow-ups (last 2):
+- Add exactly one qualifier found in the title (format, material, technique, audience, size, character).
+- Examples of acceptable qualifiers: template, pattern, printable, pdf, svg, digital, crochet, amigurumi, toddler, spiderman, christmas.
+- Keep it readable and natural; do not stack multiple qualifiers.
 
-SPECIFICITY HIERARCHY (prioritize higher levels):
-Level 4 (BEST): Theme + Specific Subject + Product Type → "Christmas Fairy Crochet Pattern"
-Level 3 (GOOD): Theme + Product Type → "Christmas Fairy Crochet"
-Level 2 (ACCEPTABLE): Specific Subject + Product Type → "Fairy Crochet Pattern"
-Level 1 (AVOID): Generic Product Type → "crochet pattern" ❌
+DO:
+- Extract nouns and key subjects from the title (e.g., "turkey", "spiderman", "fairy", "resume").
+- Convert hyphens, slashes, pipes into spaces; remove duplicates.
+- Vary the angles: theme-first, subject-first, action-first.
+- Use singular/plural naturally as implied by the title.
 
-KEYWORD DIVERSITY STRATEGY:
-- Vary the combinations: don't just repeat the same words in different orders
-- Cover different search angles: some users search by theme, others by product type
-- Include both broad specific ("Christmas Fairy Crochet") and ultra-specific ("Christmas Fairy Amigurumi Pattern")
-- Think about complementary searches: if main = "Christmas Fairy", also include "Fairy Doll Crochet"
+DO NOT:
+- Invent attributes not present in the title.
+- Add fluff or superlatives ("best", "amazing", "ultimate").
+- Keyword-stuff or produce unnatural phrases ("crochet doll pdf download") ❌
+- Mix languages in the same phrase, add emojis, or special characters.
 
-QUALITY CHECKS:
-Before outputting, verify each phrase:
-1. Would a buyer actually search this exact phrase? (not "crochet doll pdf" ❌, but "fairy doll crochet pattern" ✅)
-2. Is it specific enough to filter out unrelated products? 
-3. Does it avoid being so specific it has zero search volume? (balance needed)
-4. Are there any duplicate concepts? (remove if yes)
-
-EXAMPLES:
-
-Bad keywords (too generic):
-- "crochet doll pattern" → too broad, millions of results
-- "amigurumi pdf" → missing specificity
-- "crochet pattern english" → language shouldn't be a primary keyword
-
-Good keywords (specific + searchable):
-- "Christmas Fairy Crochet Pattern"
-- "Christmas Fairy Amigurumi"
-- "Fairy Doll Crochet Pattern"
-- "Christmas Crochet Fairy"
-
-Example transformations:
-Input: "Christmas Fairy Crochet Doll Pattern, Eiralia Amigurumi Doll PDF"
-Bad output: ["crochet doll pattern","amigurumi pdf","fairy pattern"]
-Good output: ["Christmas Fairy Crochet Pattern","Christmas Fairy Amigurumi","Fairy Doll Crochet Pattern","Christmas Crochet Doll"]
-
-Input: "Vintage Floral Cross Stitch Pattern PDF, Cottage Core Embroidery, Wildflower Design"
-Output: ["Vintage Floral Cross Stitch","Cottage Core Embroidery Pattern","Wildflower Cross Stitch Pattern"]
-
-Input: "Modern Minimalist Resume Template, Professional CV Design, Google Docs & Word"
-Output: ["Minimalist Resume Template","Modern CV Template","Professional Resume Design"]
+QUALITY CHECK:
+- Would an actual buyer type this?
+- Is grammar and casing natural?
+- Are the phrases distinct (no near-duplicates)?
+- Do the specific follow-ups add a clear qualifier?
 
 INPUT FORMAT:
 A single Etsy product title as plain text string.
 
 OUTPUT FORMAT:
 Strictly a valid JSON array of strings. Example: ["phrase one","phrase two","phrase three"]
-No code blocks, no explanations, no additional formatting.
+
+EXAMPLES:
+
+Input: "Disguise a Turkey-Spiderman Template | Thanksgiving Craft Printable | PDF | blank | cut out | Turkey project | Turkey decor | Spidey Turkey"
+Output: ["disguise a turkey","disguise a turkey spiderman","spiderman disguise a turkey","disguise a turkey spiderman template","disguise a turkey template"]
+
+Input: "Christmas Fairy Crochet Doll Pattern, Eiralia Amigurumi Doll PDF"
+Output: ["christmas fairy crochet","fairy crochet doll","christmas fairy","christmas fairy crochet doll pattern","fairy amigurumi pattern"]
+
+Input: "Vintage Floral Cross Stitch Pattern PDF, Cottage Core Embroidery, Wildflower Design"
+Output: ["vintage floral cross stitch","wildflower embroidery","cottagecore embroidery","vintage floral cross stitch pattern","wildflower cross stitch pattern"]
+
+Input: "Modern Minimalist Resume Template, Professional CV Design, Google Docs & Word"
+Output: ["minimalist resume","modern cv","professional resume","minimalist resume template","google docs resume template"]
 """.strip()
 
 def resolve_model_path_from_env(project_root: Path) -> Optional[Path]:
