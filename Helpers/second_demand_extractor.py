@@ -5,6 +5,7 @@ import urllib.parse
 import shutil
 import subprocess
 import sys
+import os
 import shlex
 from datetime import datetime
 from pathlib import Path
@@ -17,11 +18,12 @@ from html.parser import HTMLParser
 # ===== Paths and constants =====
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RUNS_ROOT = PROJECT_ROOT / "outputs" / "cart_runs"
+DATA_BASE = Path(os.getenv("DATA_DIR") or "/data")
+RUNS_ROOT = DATA_BASE / "outputs" / "cart_runs"
 TXT_FILES_ROOT = PROJECT_ROOT / "EtoRequests" / "Cart_sequence" / "txt_files"
 SPECIAL_ROOT = TXT_FILES_ROOT / "special"
-SPECIAL_SECOND_REMOVE_PATH = SPECIAL_ROOT / "1" / "removesecond.txt"  # fixed path per user request
-DEFAULT_COOKIE_JAR = PROJECT_ROOT / "outputs" / ".etsy_cookie_jar.txt"
+SPECIAL_SECOND_REMOVE_PATH = SPECIAL_ROOT / "1" / "removesecond.txt"
+DEFAULT_COOKIE_JAR = DATA_BASE / "outputs" / ".etsy_cookie_jar.txt"
 
 # ===== Basic utils =====
 

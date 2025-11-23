@@ -35,7 +35,7 @@ def project_root() -> Path:
 
 
 def discover_runs_root(root: Path) -> Path:
-    return root / "outputs"
+    return root / "data" / "outputs"
 
 
 def find_runs(outputs_root: Path) -> List[Path]:

@@ -47,8 +47,9 @@ download_progress: Dict[str, Optional[float | int | str]] = {
 download_lock = threading.Lock()
 
 load_dotenv()
-OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
-USERS_DIR = os.getenv("AI_USERS_DIR") or str(PROJECT_ROOT / "users")
+DATA_BASE = Path(os.getenv("DATA_DIR") or "/data")
+OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(DATA_BASE / "outputs")
+USERS_DIR = os.getenv("AI_USERS_DIR") or str(DATA_BASE / "users")
 TEST_TXT_PATH = os.getenv("ETO_SEARCH_CURL_PATH") or str(
     PROJECT_ROOT / "EtoRequests" / "Search_request" / "txt_files" / "1" / "EtoRequest1.txt"
 )

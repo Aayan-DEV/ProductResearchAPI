@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TEST_TXT_PATH = os.getenv("ETO_SEARCH_CURL_PATH") or str(
     PROJECT_ROOT / "EtoRequests" / "Search_request" / "txt_files" / "1" / "EtoRequest1.txt"
 )
-OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
+OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(Path(os.getenv("DATA_DIR") or "/data") / "outputs")
 V3_PAGE_SIZE = 100
 CURL_CHUNK_SIZE = 20
 MAX_OFFSET = 12000
@@ -462,7 +462,7 @@ def find_latest_curl_original() -> Optional[Path]:
     Find the latest curl_original_*.curl under outputs/*/helpers/.
     Returns the most recently modified file path or None.
     """
-    base = PROJECT_ROOT / "outputs"
+    base = Path(OUTPUT_DIR)
     try:
         candidates: List[Path] = []
         for p in base.glob("*"):
