@@ -1104,28 +1104,6 @@ def process_listing_demand(listing_id: int, run_dir: Path, outputs_dir: Path) ->
         summary["scarcity_title"] = scarcity_title
         summary["demand_value"] = demand_value
 
-        if demand_value is None:
-            reason = None
-            try:
-                s = read_file_text(out_base / "listing_json_parse_error.txt").strip()
-                reason = s if s else None
-            except Exception:
-                reason = None
-            if reason is None:
-                try:
-                    s = read_file_text(out_base / "listing_exit.txt").strip()
-                    if s.isdigit() and int(s) != 0:
-                        reason = f"listing curl exit code {s}"
-                except Exception:
-                    pass
-            if reason is None:
-                if not scarcity_title:
-                    reason = "no scarcity signal title in listing JSON"
-                else:
-                    reason = f"scarcity title not recognized: {scarcity_title}"
-            write_file_text(out_base / "demand_null_reason.txt", reason)
-            summary.setdefault("steps", {}).setdefault("demand", {})["error"] = reason
-
         # Prefer inventory id from the sidebar JSON when non-personalise
         if not is_personalizable:
             try:
@@ -1454,7 +1432,6 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                                 "out_dir": str(out_dir),
                                 "scarcity_title": scarcity_title,
                                 "demand_value": demand_value,
-                                "demand_null_reason": summary.get("steps", {}).get("demand", {}).get("error"),
                                 "cart_id": cart_id,
                                 "inventory_id": inventory_id,
                                 "group_type": group_type,
@@ -1472,20 +1449,12 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                         # Emit demand extraction progress after each processed listing
                         try:
                             if progress_cb:
-                                reason = None
-                                try:
-                                    reason = summary.get("steps", {}).get("demand", {}).get("error")
-                                except Exception:
-                                    reason = None
-                                msg = f"Processed listing_id={lid_i} demand_value={demand_value}"
-                                if demand_value is None and reason:
-                                    msg = msg + f" reason={reason}"
                                 progress_cb({
                                     "stage": "demand_extraction",
                                     "user_id": user_label,
                                     "remaining": remaining_after,
                                     "total": total_in_source,
-                                    "message": msg,
+                                    "message": f"Processed listing_id={lid_i} demand_value={demand_value}",
                                 })
                         except Exception:
                             pass
@@ -1495,7 +1464,6 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
                             f"  user: {user_label}\n"
                             f"  listing_id: {lid_i}\n"
                             f"  demand_value: {demand_value}\n"
-                            f"  demand_null_reason: {summary.get('steps', {}).get('demand', {}).get('error')}\n"
                             f"  scarcity_title: {scarcity_title}\n"
                             f"  cart_id: {cart_id}\n"
                             f"  inventory_id: {inventory_id}\n"
@@ -1973,7 +1941,6 @@ def save_combined_run_json(out_dir: Path, summary: Dict, outputs_dir: Path) -> P
         "signals": {
             "scarcity_title": summary.get("scarcity_title"),
             "demand_value": summary.get("demand_value"),
-            "demand_null_reason": read_if_exists(out_dir / "demand_null_reason.txt"),
         },
         "popular_info": None,
         # NEW: structured sale info if produced by step 2
