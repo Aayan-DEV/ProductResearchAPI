@@ -395,28 +395,34 @@ def _model_score(name: str) -> int:
 
 
 def discover_model_path(project_root: Path) -> Optional[Path]:
-    """
-    Recursively search for .gguf files under project_root.
-    Choose by preferred family first, then by larger file size (proxy for capacity).
-    """
+    roots: List[Path] = []
+    try:
+        roots.append(project_root)
+        roots.append(project_root / "data" / "models")
+    except Exception:
+        pass
+    try:
+        roots.append(Path(os.getenv("MODEL_DIR") or "/data/models"))
+    except Exception:
+        pass
+
     ggufs: List[Path] = []
-    for root, _dirs, files in os.walk(project_root):
-        for f in files:
-            if f.lower().endswith(".gguf"):
-                p = Path(root) / f
-                # Ensure non-empty file
-                try:
-                    if p.stat().st_size > 0:
-                        ggufs.append(p)
-                except Exception:
-                    pass
+    for base in roots:
+        try:
+            if base.exists():
+                for f in base.rglob("*.gguf"):
+                    try:
+                        if f.stat().st_size > 0:
+                            ggufs.append(f)
+                    except Exception:
+                        continue
+        except Exception:
+            continue
 
     if not ggufs:
         return None
 
-    ggufs.sort(
-        key=lambda p: (_model_score(p.name), -p.stat().st_size)
-    )
+    ggufs.sort(key=lambda p: (_model_score(p.name), -p.stat().st_size))
     return ggufs[0]
 
 
@@ -773,8 +779,9 @@ def main() -> None:
     if model_path is None:
         model_path = discover_model_path(project_root)
         if model_path is None:
+            roots = [str(project_root), str(project_root / "data" / "models"), os.getenv("MODEL_DIR") or "/data/models"]
             abort(
-                f"No GGUF model found. Provide --model, or set MODEL_PATH to a .gguf, or set MODEL_DIR to a directory containing .gguf. Searched under: {project_root}"
+                f"No GGUF model found. Provide --model, or set MODEL_PATH to a .gguf, or set MODEL_DIR to a directory containing .gguf. Searched under: {', '.join(roots)}"
             )
         log(f"Auto-discovered GGUF model: {model_path}")
     else:
@@ -868,12 +875,13 @@ def ensure_llm_loaded(project_root: Optional[Path] = None):
         env_model = resolve_model_path_from_env(pr)
         model_p = env_model or discover_model_path(pr)
         if not model_p:
+            roots = [str(pr), str(pr / "data" / "models"), os.getenv("MODEL_DIR") or "/data/models"]
             log(
-                f"ERROR: No GGUF model found. Set MODEL_PATH or MODEL_DIR, or pass --model. Searched under: {pr}",
+                f"ERROR: No GGUF model found. Set MODEL_PATH or MODEL_DIR, or pass --model. Searched under: {', '.join(roots)}",
                 level="ERROR",
             )
             raise RuntimeError(
-                f"No GGUF model found. Set MODEL_PATH or MODEL_DIR, or pass --model. Searched under: {pr}"
+                f"No GGUF model found. Set MODEL_PATH or MODEL_DIR, or pass --model. Searched under: {', '.join(roots)}"
             )
         _LLM_SINGLETON = load_model(str(model_p))
         return _LLM_SINGLETON
