@@ -385,6 +385,8 @@ def _model_score(name: str) -> int:
     Prefer gemma-3n/gemma3n, then gemma3/gemma, then olmo, then others.
     """
     n = name.lower()
+    if "gemma3-999.89m-q4_k_m" in n:
+        return -1
     if "gemma-3n" in n or "gemma3n" in n:
         return 0
     if "gemma3" in n or "gemma" in n:
@@ -573,16 +575,32 @@ def generate_keywords_for_title(llm, title: str) -> Tuple[List[str], str]:
             # Prefer chat completion if available
             has_chat = hasattr(llm, "create_chat_completion")
             if has_chat:
-                resp = llm.create_chat_completion(
-                    messages=[
-                        {"role": "system", "content": SEO_SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=GEN_TEMPERATURE,
-                    top_p=GEN_TOP_P,
-                    max_tokens=GEN_MAX_TOKENS,
-                )
-                content = resp["choices"][0]["message"]["content"]
+                msgs = [
+                    {"role": "system", "content": [{"type": "text", "text": SEO_SYSTEM_PROMPT}]},
+                    {"role": "user", "content": [{"type": "text", "text": user_prompt}]},
+                ]
+                try:
+                    resp = llm.create_chat_completion(
+                        messages=msgs,
+                        temperature=GEN_TEMPERATURE,
+                        top_p=GEN_TOP_P,
+                        max_tokens=GEN_MAX_TOKENS,
+                    )
+                    content = resp["choices"][0]["message"].get("content") or resp["choices"][0].get("text") or ""
+                except Exception:
+                    prompt = (
+                        f"[SYSTEM]\n{SEO_SYSTEM_PROMPT}\n\n"
+                        f"[USER]\n{user_prompt}\n\n"
+                        f"[ASSISTANT]\n"
+                    )
+                    resp = llm.create_completion(
+                        prompt=prompt,
+                        temperature=GEN_TEMPERATURE,
+                        top_p=GEN_TOP_P,
+                        max_tokens=GEN_MAX_TOKENS,
+                        stop=["[USER]", "[SYSTEM]"],
+                    )
+                    content = resp["choices"][0]["text"]
             else:
                 # Fallback to plain completion
                 prompt = (

@@ -530,7 +530,7 @@ def ensure_model_available() -> Dict[str, any]:
     preferred_dir = Path(os.getenv("MODEL_DIR") or "/data/models")
     fallback_dir = project_root / "data" / "models"
 
-    default_name = "gemma-3n-E4B-it-Q4_K_S.gguf"
+    default_name = "gemma3-999.89M-Q4_K_M.gguf"
     model_path_env = os.getenv("MODEL_PATH")
     model_url = os.getenv("MODEL_URL", "")
     model_sha256 = os.getenv("MODEL_SHA256", "")
