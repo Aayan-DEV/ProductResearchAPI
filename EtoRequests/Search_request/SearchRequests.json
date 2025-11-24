@@ -1,32 +1,32 @@
 {
   "1": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/1/EtoRequest1.txt"
+    "source_file": "./txt_files/1/EtoRequest1.txt"
   },
   "2": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/2/EtoRequest2.txt"
+    "source_file": "./txt_files/2/EtoRequest2.txt"
   },
   "3": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/3/EtoRequest3.txt"
+    "source_file": "./txt_files/3/EtoRequest3.txt"
   },
   "4": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/4/EtoRequest4.txt"
+    "source_file": "./txt_files/4/EtoRequest4.txt"
   },
   "5": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/5/EtoRequest5.txt"
+    "source_file": "./txt_files/5/EtoRequest5.txt"
   },
   "6": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/6/EtoRequest6.txt"
+    "source_file": "./txt_files/6/EtoRequest6.txt"
   },
   "7": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/7/EtoRequest7.txt"
+    "source_file": "./txt_files/7/EtoRequest7.txt"
   },
   "8": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/8/EtoRequest8.txt"
+    "source_file": "./txt_files/8/EtoRequest8.txt"
   },
   "9": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/9/EtoRequest9.txt"
+    "source_file": "./txt_files/9/EtoRequest9.txt"
   },
   "10": {
-    "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Search_request/txt_files/10/EtoRequest10.txt"
+    "source_file": "./txt_files/10/EtoRequest10.txt"
   }
 }
