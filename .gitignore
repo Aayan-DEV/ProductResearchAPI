@@ -18,3 +18,5 @@ data/
 test.py
 run_stream_aayan_pdf_20251108-040516.json
 Helpers/example.json
+
+.env 
