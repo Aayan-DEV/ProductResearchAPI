@@ -597,6 +597,13 @@ def ensure_model_available() -> Dict[str, any]:
 
         if not model_url:
             status["error"] = f"Model missing at {model_path} and MODEL_URL not set"
+            print(
+                f"[Model Error] AI model not available.\n"
+                f"  model_dir={status['model_dir']}\n"
+                f"  model_path={status['model_path']}\n"
+                f"  Hint: set MODEL_PATH to a .gguf file or set MODEL_URL to a direct download URL; optionally set MODEL_DIR to a writable location (volume_mounted={status['volume_mounted']}).",
+                flush=True,
+            )
             return status
 
         # Robust download with simple retry/backoff
@@ -741,9 +748,22 @@ def ensure_model_available() -> Dict[str, any]:
                 time.sleep(backoff)
 
         status["error"] = f"Download failed after {tries} attempts: {last_err}"
+        print(
+            f"[Model Error] Download failed after {tries} attempts: {last_err}\n"
+            f"  source={model_url}\n"
+            f"  destination={status['model_path']}\n"
+            f"  Hint: verify MODEL_URL is reachable and correct; if using MODEL_SHA256 ensure checksum matches; alternatively mount a model file and set MODEL_PATH.",
+            flush=True,
+        )
         return status
     except Exception as e:
         status["error"] = str(e)
+        print(
+            f"[Model Error] Unexpected error ensuring model: {e}\n"
+            f"  model_dir={status['model_dir']}\n"
+            f"  destination={status['model_path']}",
+            flush=True,
+        )
         return status
 
 @asynccontextmanager

@@ -774,8 +774,7 @@ def main() -> None:
         model_path = discover_model_path(project_root)
         if model_path is None:
             abort(
-                "Could not auto-discover a GGUF model under the project root. "
-                "Place a '.gguf' file in the project and/or pass --model."
+                f"No GGUF model found. Provide --model, or set MODEL_PATH to a .gguf, or set MODEL_DIR to a directory containing .gguf. Searched under: {project_root}"
             )
         log(f"Auto-discovered GGUF model: {model_path}")
     else:
@@ -869,7 +868,13 @@ def ensure_llm_loaded(project_root: Optional[Path] = None):
         env_model = resolve_model_path_from_env(pr)
         model_p = env_model or discover_model_path(pr)
         if not model_p:
-            raise RuntimeError("No .gguf model found under project root or MODEL_DIR for AI keywords.")
+            log(
+                f"ERROR: No GGUF model found. Set MODEL_PATH or MODEL_DIR, or pass --model. Searched under: {pr}",
+                level="ERROR",
+            )
+            raise RuntimeError(
+                f"No GGUF model found. Set MODEL_PATH or MODEL_DIR, or pass --model. Searched under: {pr}"
+            )
         _LLM_SINGLETON = load_model(str(model_p))
         return _LLM_SINGLETON
 
