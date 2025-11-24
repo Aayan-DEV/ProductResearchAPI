@@ -1,0 +1,26 @@
+curl 'https://www.etsy.com/api/v3/ajax/bespoke/shop/53081804/marketplace-insights/results-data?query=pdf&search_term_hash=&search_trigger=results_search_bar' \
+  -H 'accept: */*' \
+  -H 'accept-language: en-US,en;q=0.9' \
+  -H 'content-type: application/json' \
+  -b 'user_prefs=uwycwqwk5ZPktsEUxBTn3_bYWj9jZACCjCvyATA6Wsk1NEhJJ680J0dHKTVPNzRYSUfJzRMqYgShcBGxDAA.; fve=1758732112.0; exp_ebid=m=Pz%2Fqp8xuRr%2BSXv7vRKZHx%2F7%2FX9nQruVU2Q9E1d7zxO4%3D,v=0OQyQ_VQnES3cK4Ow0I6lqGEmmw9Of4X; ua=531227642bc86f3b5fd7103a0c0b4fd6; p=eyJnZHByX3RwIjoxLCJnZHByX3AiOjEsIkFkdmVydGlzaW5nIjoxLCJGdW5jdGlvbmFsIjoxfQ..; LD=1; _fbp=fb.1.1758732221214.2572300927542085; _gcl_au=1.1.1213917460.1758732222; _pin_unauth=dWlkPU5qazFabVU0WlRNdE9HUXlNaTAwWm1aaExUZ3pOemt0WlRoaVpqazRPVFJsTnpBeQ; convos_quick_discount_tooltip=seen; ship_by_date_seller_v_client_timezone_analytics=true; AMP_4f4687ed7a=JTdCJTIyZGV2aWNlSWQlMjIlM0ElMjIwZWUzZWU1NC0xYzM5LTQ4MjgtODhkNi1lYzZlZTNiZjM4ZmQlMjIlMkMlMjJzZXNzaW9uSWQlMjIlM0ExNzU4NzMyMTEzNjQ5JTJDJTIyb3B0T3V0JTIyJTNBZmFsc2UlMkMlMjJwYWdlQ291bnRlciUyMiUzQTAlN0Q=; _ga_18FBCTGXSX=GS2.1.s1760040275$o1$g1$t1760040389$j60$l0$h0; gifting_mission_module_occasion={"occasionId":1259729986981,"seenTimestamps":[1761829964966]}; _aw_j_6220={"id":"a11e1e53-7864-4309-8a80-bf0c399fe9af-1","expiration":1770061843}; _ga_KLN5K5P8SN=GS2.2.s1762906223$o4$g1$t1762906292$j60$l0$h0; _ga=GA1.1.1023447432.1758732222; web_home_hub={"rotationCounter":3,"merchTitleViewCount":2,"rvListingIDs":[1651924258,1135331218],"lastMerchTitle":"Donâ€™t miss this deal"}; dashboard_stats_range=today; listing_page_seen=true; uaid=dDC6FsCkDlBV06Yj5haa3lzDhTRjZACCjCvyASA6U7GWpVqpNDEzRclKKcQ4UDe4zMPSp9A00q-owim12NDIr6wqxc3f3VeplgEA; session-key-apex=941665872-1432649337288-8809c5037fce8bb0ca3a820930ae7266ee96198304286af4f77cf7b2|1771585424; wedding_session=QCGW7SMrsssdFzkh850-VGPhqsFjZACCTKW2OjgNAA..; last_browse_page=https%3A%2F%2Fwww.etsy.com%2F; recent_activity_hub={"displayedListingIds":[1809070693,1728475183,1465340121,1651924258,1696724636,1135331218,1480774361,567521579,1691793563,4377970145],"seenTimestamps":[1763871148242],"seenListingIds":[1809070693,1728475183,1465340121,1651924258,1696724636,1135331218]}; session-key-www=941665872-1432649337288-ba51f938ae7c1f710f1b4aaa21ecf399f24162eab1cfbde64a2a6e17|1771773505; lantern=b1e04102-4681-407c-a05b-cfa1a6704363; et-v1-1-1-_etsy_com=2%3Af4234f8588255711ac0348d55154994d0ae79b40%3A1763809424%3A1763997656%3A__athena_compat-941665872-1432649337288-144d42badeceaba601c1837aa008298233d2eec385e674a984e045d202b715c2a98136be0098e4b2; _uetsid=fa0cd6f0c94811f09606c53c8a333852; _uetvid=a159bb30996511f0b4a0bd942b04bf18; datadome=qc1_087tgJWj5l0EVU71bURBMQRxFZs9fo~SW60E5uvPjJ8ZbxlCvrXHmQKKXt520YQtWqsxKE32gprkg_3p9OHTjIWdxKacj8JOErCSXwL6AI74Hm0RwFQaB7wBdZHM; _ga_KR3J610VYM=GS2.1.s1764011078$o117$g1$t1764011439$j57$l0$h0' \
+  -H 'downlink: 10' \
+  -H 'dpr: 2' \
+  -H 'ect: 4g' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://www.etsy.com/your/shops/me/marketplace-insights/search?query=pdf&search_trigger=results_search_bar' \
+  -H 'rtt: 200' \
+  -H 'sec-ch-dpr: 2' \
+  -H 'sec-ch-ua: "Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"' \
+  -H 'sec-ch-ua-arch: "arm"' \
+  -H 'sec-ch-ua-bitness: "64"' \
+  -H 'sec-ch-ua-full-version-list: "Chromium";v="142.0.7444.162", "Google Chrome";v="142.0.7444.162", "Not_A Brand";v="99.0.0.0"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "macOS"' \
+  -H 'sec-ch-ua-platform-version: "26.0.1"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: same-origin' \
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' \
+  -H 'x-detected-locale: GBP|en-US|NO' \
+  -H 'x-page-guid: 100b28c015fe.96d9d24fe1d2575afbce.00' \
+  -H 'x-transform-response: camel-case'

@@ -520,12 +520,18 @@ def main() -> None:
 
 # Cached Etsy Search config for quick API calls
 _ETSY_SEARCH_CFG = None
+_ETSY_SEARCH_ALT = None
+
+def discover_etsy_search_req_file_alt(root: Path) -> Optional[Path]:
+    alt = root / "EtoRequests" / "Etsy_Search" / "Etreq2.txt"
+    return alt if alt.exists() else None
 
 def ensure_etsy_search_config(root: Optional[Path] = None) -> Tuple[str, Dict[str, str]]:
     """
     Resolve base_url and headers for Etsy Search (Marketplace Insights).
     """
     global _ETSY_SEARCH_CFG
+    global _ETSY_SEARCH_CFG, _ETSY_SEARCH_ALT
     if _ETSY_SEARCH_CFG is not None:
         return _ETSY_SEARCH_CFG
     base = project_root() if root is None else root
@@ -534,6 +540,13 @@ def ensure_etsy_search_config(root: Optional[Path] = None) -> Tuple[str, Dict[st
         raise RuntimeError("Etsy Search curl request file not found in EtoRequests/Etsy_Search.")
     base_url, headers = parse_curl_file(req_file)
     _ETSY_SEARCH_CFG = (base_url, headers)
+    alt_file = discover_etsy_search_req_file_alt(base)
+    if alt_file:
+        try:
+            alt_url, alt_headers = parse_curl_file(alt_file)
+            _ETSY_SEARCH_ALT = (alt_url, alt_headers)
+        except Exception:
+            _ETSY_SEARCH_ALT = None
     return _ETSY_SEARCH_CFG
 
 def fetch_metrics_for_keyword(keyword: str, base_url: Optional[str] = None, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
@@ -547,19 +560,81 @@ def fetch_metrics_for_keyword(keyword: str, base_url: Optional[str] = None, head
 
     try:
         resp = requests.get(url, headers=headers_to_use, timeout=REQUEST_TIMEOUT)
+        status = resp.status_code
         try:
             resp_json = resp.json()
         except Exception:
             resp_json = {"_non_json_response": resp.text}
+        if status and status >= 400:
+            alt = globals().get("_ETSY_SEARCH_ALT")
+            if alt:
+                alt_url_base, alt_headers = alt
+                alt_url = replace_query_in_url(alt_url_base, keyword)
+                alt_headers_use = sanitize_headers_for_requests(dict(alt_headers or {}))
+                update_header_referer(alt_headers_use, keyword)
+                try:
+                    alt_resp = requests.get(alt_url, headers=alt_headers_use, timeout=REQUEST_TIMEOUT)
+                    try:
+                        alt_resp_json = alt_resp.json()
+                    except Exception:
+                        alt_resp_json = {"_non_json_response": alt_resp.text}
+                    alt_metrics = extract_metrics_from_response(alt_resp_json)
+                    return {
+                        "keyword": keyword,
+                        "request_url": alt_url,
+                        "status_code": alt_resp.status_code,
+                        "metrics": alt_metrics,
+                        "response": alt_resp_json,
+                        "fallback_used": True,
+                    }
+                except Exception as e2:
+                    return {
+                        "keyword": keyword,
+                        "request_url": alt_url,
+                        "status_code": None,
+                        "metrics": {"vol": None, "competition": None},
+                        "error": str(e2),
+                        "fallback_used": True,
+                    }
         metrics = extract_metrics_from_response(resp_json)
         return {
             "keyword": keyword,
             "request_url": url,
-            "status_code": resp.status_code,
+            "status_code": status,
             "metrics": metrics,
             "response": resp_json,
         }
     except Exception as e:
+        alt = globals().get("_ETSY_SEARCH_ALT")
+        if alt:
+            alt_url_base, alt_headers = alt
+            alt_url = replace_query_in_url(alt_url_base, keyword)
+            alt_headers_use = sanitize_headers_for_requests(dict(alt_headers or {}))
+            update_header_referer(alt_headers_use, keyword)
+            try:
+                alt_resp = requests.get(alt_url, headers=alt_headers_use, timeout=REQUEST_TIMEOUT)
+                try:
+                    alt_resp_json = alt_resp.json()
+                except Exception:
+                    alt_resp_json = {"_non_json_response": alt_resp.text}
+                alt_metrics = extract_metrics_from_response(alt_resp_json)
+                return {
+                    "keyword": keyword,
+                    "request_url": alt_url,
+                    "status_code": alt_resp.status_code,
+                    "metrics": alt_metrics,
+                    "response": alt_resp_json,
+                    "fallback_used": True,
+                }
+            except Exception as e2:
+                return {
+                    "keyword": keyword,
+                    "request_url": alt_url,
+                    "status_code": None,
+                    "metrics": {"vol": None, "competition": None},
+                    "error": str(e2),
+                    "fallback_used": True,
+                }
         return {
             "keyword": keyword,
             "request_url": url,
