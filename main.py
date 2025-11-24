@@ -24,7 +24,7 @@ if str(HELPERS_DIR) not in sys.path:
     sys.path.insert(0, str(HELPERS_DIR))
 
 import first_etsy_api_use as etsy
-import third_ai_keywords as ai
+import testing_ai_keywords as ai
 import fourth_everbee_keyword as everbee
 import singlesearch as ss
 
