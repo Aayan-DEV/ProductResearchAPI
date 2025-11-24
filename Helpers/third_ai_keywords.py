@@ -339,7 +339,7 @@ def discover_input_json(project_root: Path) -> Optional[Path]:
     """
     # 1) Preferred path: outputs/popular_listings_full_pdf.json
     try:
-        outputs_path = project_root / "data" / "outputs" / "popular_listings_full_pdf.json"
+        outputs_path = project_root / "outputs" / "popular_listings_full_pdf.json"
         if outputs_path.exists() and outputs_path.is_file() and outputs_path.stat().st_size > 0:
             return outputs_path.resolve()
     except Exception:
@@ -356,7 +356,7 @@ def discover_input_json(project_root: Path) -> Optional[Path]:
     # 3) Last resort: pick any JSON under outputs/ that appears to contain 'popular_results'
     candidates: List[Path] = []
     try:
-        outputs_dir = project_root / "data" / "outputs"
+        outputs_dir = project_root / "outputs"
         if outputs_dir.exists():
             for p in outputs_dir.rglob("*.json"):
                 try:

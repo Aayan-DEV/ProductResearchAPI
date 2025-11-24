@@ -47,9 +47,8 @@ download_progress: Dict[str, Optional[float | int | str]] = {
 download_lock = threading.Lock()
 
 load_dotenv()
-DATA_BASE = Path(os.getenv("DATA_DIR") or "/data")
-OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(DATA_BASE / "outputs")
-USERS_DIR = os.getenv("AI_USERS_DIR") or str(DATA_BASE / "users")
+OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
+USERS_DIR = os.getenv("AI_USERS_DIR") or str(PROJECT_ROOT / "users")
 TEST_TXT_PATH = os.getenv("ETO_SEARCH_CURL_PATH") or str(
     PROJECT_ROOT / "EtoRequests" / "Search_request" / "txt_files" / "1" / "EtoRequest1.txt"
 )
@@ -520,11 +519,6 @@ def reconnect_stream(payload: ReconnectRequest):
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         background=BackgroundTask(_notify_sse_closed_active),
     )
-
-@app.get("/reconnect/stream")
-def reconnect_stream_get(user_id: str, keyword: str, session_id: str):
-    payload = ReconnectRequest(user_id=user_id, keyword=keyword, session_id=session_id)
-    return reconnect_stream(payload)
 
 def ensure_model_available() -> Dict[str, any]:
     """
@@ -2251,8 +2245,6 @@ def run_stream(payload: RunRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
-
-@app.get("/run/stream")
 def run_stream_get(user_id: str, keyword: str, session_id: str, desired_total: Optional[int] = None):
     payload = RunRequest(user_id=user_id, keyword=keyword, desired_total=desired_total, session_id=session_id)
     return run_stream(payload)

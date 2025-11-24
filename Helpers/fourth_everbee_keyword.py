@@ -10,7 +10,7 @@ Everbee/Etsy Search keyword metrics compiler (run-aware, demand summary first).
 - Executes Etsy Search (Marketplace Insights) request for each keyword and extracts searchVolume (vol) and avgTotalListings (competition).
 - Writes outputs to `<run>/outputs/everbee/compiled_products_keywords_metrics.json` and per-keyword JSONs to `<run>/outputs/everbee/keyword_outputs/`.
 """
-
+import os
 import json
 import re
 import sys
@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from difflib import SequenceMatcher
-
+REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))
 import requests
 
 # ------------------------------
@@ -35,7 +35,7 @@ def project_root() -> Path:
 
 
 def discover_runs_root(root: Path) -> Path:
-    return root / "data" / "outputs"
+    return root / "outputs"
 
 
 def find_runs(outputs_root: Path) -> List[Path]:
@@ -121,83 +121,87 @@ def write_json(path: Path, payload: Dict[str, Any]) -> None:
 # ------------------------------
 
 def parse_curl_file(curl_file_path: Path) -> Tuple[str, Dict[str, str]]:
-    """
-    Parse a curl file with lines like:
-      curl --request GET \
-        --url 'https://.../results-data?query=...' \
-        --header 'Header-Name: value' \
-        --cookie 'name=value; other=value' \
-    Returns (base_url, headers_dict). Cookies are merged into headers['Cookie'] if present.
-    """
     text = curl_file_path.read_text(encoding="utf-8", errors="ignore")
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines:
-        raise ValueError("curl file is empty")
-
-    base_url = None
+    lines = text.splitlines()
+    url: Optional[str] = None
     headers: Dict[str, str] = {}
-    cookie_value: Optional[str] = None
-
-    for line in lines:
-        if base_url is None:
-            m_url = re.search(r"--url\s+'([^']+)'", line)
-            if m_url:
-                base_url = m_url.group(1)
+    cookies_segments: List[str] = []
+    for raw in lines:
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("--url"):
+            m = re.search(r"--url\s+'([^']+)'", line) or re.search(r'--url\s+"([^"]+)"', line)
+            if m:
+                url = m.group(1)
+            continue
+        if line.startswith("curl"):
+            m = re.search(r"curl\s+'([^']+)'", line) or re.search(r'curl\s+"([^"]+)"', line)
+            if m:
+                url = m.group(1)
+            continue
+        if line.startswith("-H") or line.startswith("--header"):
+            m = re.search(r"(?:-H|--header)\s+'(.*)'\s*\\?$", line) or re.search(r'(?:-H|--header)\s+"(.*)"\s*\\?$', line)
+            if not m:
                 continue
-            m_alt = re.search(r"curl\s+'([^']+)'", line)
-            if m_alt:
-                base_url = m_alt.group(1)
+            header_literal = m.group(1)
+            if ":" not in header_literal:
                 continue
-
-        m_header = re.match(r"(?:-H|--header)\s+'([^:]+):\s*(.+)'\s*", line)
-        if m_header:
-            key = m_header.group(1).strip()
-            val = m_header.group(2).strip()
-            headers[key] = val
+            name, value = header_literal.split(":", 1)
+            name = name.strip()
+            value = value.strip()
+            if not name or any(c in name for c in [":", "\r", "\n"]):
+                continue
+            headers[name] = value
             continue
-
-        m_cookie = re.match(r"--cookie\s+'(.+)'\s*", line)
-        if m_cookie:
-            cookie_value = m_cookie.group(1).strip()
+        if line.startswith("-b") or line.startswith("--cookie"):
+            m = re.search(r"(?:-b|--cookie)\s+'([^']+)'", line) or re.search(r'(?:-b|--cookie)\s+"([^"]+)"', line)
+            if m:
+                cookies_segments.append(m.group(1).strip())
             continue
-
-        m_cookie_short = re.match(r"-b\s+'(.+)'\s*", line)
-        if m_cookie_short:
-            cookie_value = m_cookie_short.group(1).strip()
-            continue
-
-    if not base_url:
-        raise ValueError("Could not extract URL from curl file")
-
-    if cookie_value:
-        # Merge cookie into headers; prefer explicit Cookie header if already present.
-        if "Cookie" in headers and headers["Cookie"]:
-            headers["Cookie"] = f"{headers['Cookie']}; {cookie_value}"
+    if cookies_segments:
+        merged_cookie = "; ".join(cookies_segments)
+        if "Cookie" in headers:
+            headers["Cookie"] = headers["Cookie"] + "; " + merged_cookie
         else:
-            headers["Cookie"] = cookie_value
+            headers["Cookie"] = merged_cookie
+    if not url:
+        raise ValueError("Could not extract URL from curl file")
+    return url, headers
 
-    return base_url, headers
+def sanitize_headers_for_requests(headers: Dict[str, str]) -> Dict[str, str]:
+    cleaned: Dict[str, str] = {}
+    for k, v in headers.items():
+        vv = (v or "")
+        vv = vv.replace("\r", "").replace("\n", "")
+        try:
+            vv.encode("latin-1")
+            cleaned[k] = vv
+        except UnicodeEncodeError:
+            cleaned[k] = vv.encode("latin-1", "ignore").decode("latin-1", "ignore")
+    return cleaned
 
+def update_header_referer(headers: Dict[str, str], keyword: str) -> None:
+    for key in list(headers.keys()):
+        if key.lower() == "referer":
+            try:
+                headers[key] = replace_query_in_url(headers[key], keyword)
+            except Exception:
+                pass
+            break
 
 def replace_query_in_url(base_url: str, keyword: str) -> str:
-    """
-    Replace the 'query' parameter in the Etsy Search URL with the given keyword.
-    """
     parsed = urllib.parse.urlparse(base_url)
     q = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
     q["query"] = [keyword]
-    # Keep existing params including blank ones
-    # parse_qs returns lists; urlencode with doseq=True preserves multiple values.
     flat_q = {}
     for k, v in q.items():
-        # take first value if single
         flat_q[k] = v if isinstance(v, list) else [v]
     new_query = urllib.parse.urlencode(flat_q, doseq=True)
     new_url = urllib.parse.urlunparse((
         parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment
     ))
     return new_url
-
 
 def extract_metrics_from_response(resp_json: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -206,25 +210,10 @@ def extract_metrics_from_response(resp_json: Dict[str, Any]) -> Dict[str, Any]:
       - competition: stats.avgTotalListings
     """
     metrics = {"vol": None, "competition": None}
-
-    def pick_stats(obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        if not isinstance(obj, dict):
-            return None
-        s = obj.get("stats")
-        if isinstance(s, dict):
-            return s
-        for key in ("data", "response", "payload", "result", "results"):
-            cont = obj.get(key)
-            if isinstance(cont, dict):
-                s2 = cont.get("stats")
-                if isinstance(s2, dict):
-                    return s2
-        return None
-
-    stats = pick_stats(resp_json) or {}
+    stats = resp_json.get("stats", {})
     if isinstance(stats, dict):
-        metrics["vol"] = stats.get("searchVolume") or stats.get("search_volume")
-        metrics["competition"] = stats.get("avgTotalListings") or stats.get("avg_total_listings") or stats.get("totalListings")
+        metrics["vol"] = stats.get("searchVolume")
+        metrics["competition"] = stats.get("avgTotalListings")
     return metrics
 
 # ------------------------------
@@ -462,7 +451,10 @@ def main() -> None:
         for kw in product_keywords:
             req_url = replace_query_in_url(base_url, kw)
             try:
-                resp = requests.get(req_url, headers=headers, timeout=30)
+                headers_to_use = dict(headers or {})
+                update_header_referer(headers_to_use, kw)
+                headers_to_use = sanitize_headers_for_requests(headers_to_use)
+                resp = requests.get(req_url, headers=headers_to_use, timeout=REQUEST_TIMEOUT)
                 status = resp.status_code
                 try:
                     resp_json = resp.json()
@@ -545,24 +537,16 @@ def ensure_etsy_search_config(root: Optional[Path] = None) -> Tuple[str, Dict[st
     return _ETSY_SEARCH_CFG
 
 def fetch_metrics_for_keyword(keyword: str, base_url: Optional[str] = None, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
-    """
-    Execute Etsy Search request for a single keyword and return metrics + response info.
-    """
     if not base_url or not headers:
         base_url, headers = ensure_etsy_search_config()
     url = replace_query_in_url(base_url, keyword)
 
-    # Clone headers and update Referer to match the keyword (mirrors manual curl)
     headers_to_use = dict(headers or {})
-    try:
-        ref_key = next((k for k in headers_to_use.keys() if k.lower() == "referer"), None)
-        if ref_key:
-            headers_to_use[ref_key] = replace_query_in_url(headers_to_use[ref_key], keyword)
-    except Exception:
-        pass
+    update_header_referer(headers_to_use, keyword)
+    headers_to_use = sanitize_headers_for_requests(headers_to_use)
 
     try:
-        resp = requests.get(url, headers=headers_to_use, timeout=30)
+        resp = requests.get(url, headers=headers_to_use, timeout=REQUEST_TIMEOUT)
         try:
             resp_json = resp.json()
         except Exception:
