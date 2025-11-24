@@ -1,13 +1,13 @@
 {
   "1": {
     "listing": {
-      "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Cart_sequence/txt_files/1/listing.txt"
+      "source_file": "./txt_files/1/Non_personalise/listing.txt"
     },
     "get_cart": {
-      "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Cart_sequence/txt_files/1/gettingcart.txt"
+      "source_file": "./txt_files/1/Non_personalise/gettingcart.txt"
     },
     "remove_from_cart": {
-      "source_file": "/Users/aayan/Development/Eto/Eto/EtoRequests/Cart_sequence/txt_files/1/removingcart.txt"
+      "source_file": "./txt_files/1/Non_personalise/removingcart.txt"
     }
   }
 }
