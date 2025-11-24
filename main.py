@@ -1744,37 +1744,41 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
     total_popular = len(popular_ids_dedup)
 
     # NEW: ensure downstream stages run; fallback when no popular IDs
+    strict_pop = str(os.getenv("STRICT_POPULAR_ONLY", "0")).lower() in ("1", "true", "yes")
     if total_popular == 0:
-        fallback_ids = result.get("html_listing_ids_all") or listing_ids
-        try:
-            fallback_ids = [int(str(x)) for x in (fallback_ids or [])]
-        except Exception:
-            fallback_ids = listing_ids
-        fallback_ids = list(dict.fromkeys(fallback_ids))
-        if desired_total is not None:
-            try:
-                cap = max(1, int(desired_total))
-            except Exception:
-                cap = 10
-            fallback_ids = fallback_ids[:cap]
+        if strict_pop:
+            print("[Run] Strict popular-only mode: no Popular-now IDs; skipping fallback.", flush=True)
         else:
-            fallback_ids = fallback_ids[:min(10, len(fallback_ids))]
-        try:
-            etsy.append_to_popular_queue(popular_queue_path, fallback_ids, 0, user_id)
-        except Exception as e:
-            print(f"[Run] WARN: fallback queue append failed: {e}")
-        total_popular = len(fallback_ids)
-        try:
-            if progress_cb:
-                progress_cb({
-                    "stage": "fallback",
-                    "user_id": user_id,
-                    "remaining": total_popular,
-                    "total": total_popular,
-                    "message": f"Fallback: queued {total_popular} listings from aggregated search",
-                })
-        except Exception:
-            pass
+            fallback_ids = result.get("html_listing_ids_all") or listing_ids
+            try:
+                fallback_ids = [int(str(x)) for x in (fallback_ids or [])]
+            except Exception:
+                fallback_ids = listing_ids
+            fallback_ids = list(dict.fromkeys(fallback_ids))
+            if desired_total is not None:
+                try:
+                    cap = max(1, int(desired_total))
+                except Exception:
+                    cap = 10
+                fallback_ids = fallback_ids[:cap]
+            else:
+                fallback_ids = fallback_ids[:min(10, len(fallback_ids))]
+            try:
+                etsy.append_to_popular_queue(popular_queue_path, fallback_ids, 0, user_id)
+            except Exception as e:
+                print(f"[Run] WARN: fallback queue append failed: {e}")
+            total_popular = len(fallback_ids)
+            try:
+                if progress_cb:
+                    progress_cb({
+                        "stage": "fallback",
+                        "user_id": user_id,
+                        "remaining": total_popular,
+                        "total": total_popular,
+                        "message": f"Fallback: queued {total_popular} listings from aggregated search",
+                    })
+            except Exception:
+                pass
 
     # Start AI/Everbee and demand/artifacts threads
     keywords_t = start_keywords_and_everbee_thread(

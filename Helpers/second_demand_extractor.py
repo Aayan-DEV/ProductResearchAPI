@@ -1308,6 +1308,9 @@ def consume_popular_queue(queue_path: Path, run_dir: Path, outputs_dir: Path, po
     except Exception:
         allowed_ids = None
 
+    strict_pop = str(os.getenv("STRICT_POPULAR_ONLY", "0")).lower() in ("1", "true", "yes")
+    if strict_pop and allowed_ids is None:
+        allowed_ids = set()
     print(
         f"Second Etsy Demand Extractor Queue STARTED\n"
         f"  user: {user_label}\n"
