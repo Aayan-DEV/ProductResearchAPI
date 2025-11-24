@@ -351,10 +351,11 @@ def main() -> None:
         print("Etsy Search curl request file not found in EtoRequests/Etsy_Search.")
         sys.exit(1)
 
+    alt_file = discover_etsy_search_req_file_alt(root)
     try:
-        base_url, headers = parse_curl_file(req_file)
+        base_url, headers = ensure_etsy_search_config(root)
     except Exception as e:
-        print(f"Error parsing curl file: {e}")
+        print(f"Error resolving Etsy Search config: {e}")
         sys.exit(1)
 
     # Load summary entries and keywords
@@ -398,6 +399,7 @@ def main() -> None:
             "summary_path": str(summary_path),
             "keywords_path": str(keywords_path),
             "req_file": str(req_file),
+            "req_file_alt": str(alt_file) if alt_file else None,
             "timestamp": datetime.now().isoformat(timespec="seconds"),
             "requested_products_count": num_products,
         },
@@ -449,66 +451,36 @@ def main() -> None:
         }
 
         for kw in product_keywords:
-            req_url = replace_query_in_url(base_url, kw)
-            try:
-                headers_to_use = dict(headers or {})
-                update_header_referer(headers_to_use, kw)
-                headers_to_use = sanitize_headers_for_requests(headers_to_use)
-                resp = requests.get(req_url, headers=headers_to_use, timeout=REQUEST_TIMEOUT)
-                status = resp.status_code
-                try:
-                    resp_json = resp.json()
-                except Exception:
-                    resp_json = {"_non_json_response": resp.text}
-
-                # Save per-keyword enriched payload
-                safe_kw = re.sub(r"[^a-zA-Z0-9_\-]+", "_", kw).strip("_")
-                per_kw_path = per_kw_dir / f"keyword_{safe_kw}.json"
-                enriched = {
-                    "source_title": final_title,
-                    "listing_id": listing_id,
-                    "group": group,
-                    "url": url,
-                    "keyword": kw,
-                    "request_url": req_url,
-                    "status_code": status,
-                    "timestamp": datetime.now().isoformat(timespec="seconds"),
-                    "response": resp_json,
-                }
-                write_json(per_kw_path, enriched)
-
-                metrics = extract_metrics_from_response(resp_json)
-                product_result["keywords"].append({
-                    "keyword": kw,
-                    "request_url": req_url,
-                    "status_code": status,
-                    "metrics": metrics,
-                })
-                print(f"  kw='{kw}' -> {status} | metrics={metrics}")
-            except Exception as e:
-                safe_kw = re.sub(r"[^a-zA-Z0-9_\-]+", "_", kw).strip("_")
-                per_kw_path = per_kw_dir / f"keyword_{safe_kw}.json"
-                error_payload = {
-                    "source_title": final_title,
-                    "listing_id": listing_id,
-                    "group": group,
-                    "url": url,
-                    "keyword": kw,
-                    "request_url": req_url,
-                    "status_code": None,
-                    "timestamp": datetime.now().isoformat(timespec="seconds"),
-                    "error": str(e),
-                    "response": None,
-                }
-                write_json(per_kw_path, error_payload)
-                product_result["keywords"].append({
-                    "keyword": kw,
-                    "request_url": req_url,
-                    "status_code": None,
-                    "metrics": {"vol": None, "competition": None},
-                    "error": str(e),
-                })
-                print(f"  kw='{kw}' -> request failed: {e}")
+            result = fetch_metrics_for_keyword(kw, base_url, headers)
+            safe_kw = re.sub(r"[^a-zA-Z0-9_\-]+", "_", kw).strip("_")
+            per_kw_path = per_kw_dir / f"keyword_{safe_kw}.json"
+            enriched = {
+                "source_title": final_title,
+                "listing_id": listing_id,
+                "group": group,
+                "url": url,
+                "keyword": kw,
+                "request_url": result.get("request_url"),
+                "status_code": result.get("status_code"),
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "response": result.get("response"),
+                "fallback_used": result.get("fallback_used", False),
+            }
+            write_json(per_kw_path, enriched)
+            metrics = result.get("metrics", {"vol": None, "competition": None})
+            product_result["keywords"].append({
+                "keyword": kw,
+                "request_url": result.get("request_url"),
+                "status_code": result.get("status_code"),
+                "metrics": metrics,
+                "fallback_used": result.get("fallback_used", False),
+                "error": result.get("error"),
+            })
+            msg = f"[Everbee] listing_id={listing_id} kw='{kw}' -> {result.get('status_code')} metrics={metrics}"
+            if result.get("fallback_used"):
+                tried = f"{alt_file.name}" if alt_file else "second request file"
+                msg += f" | first failed, tried {tried}"
+            print(msg)
 
         compiled["products"].append(product_result)
 

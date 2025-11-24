@@ -1935,9 +1935,11 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
         llm = None
     try:
         base_url, headers = everbee.ensure_etsy_search_config(Path(__file__).resolve().parent)
+        alt_file = everbee.discover_etsy_search_req_file_alt(Path(__file__).resolve().parent)
     except Exception as e:
         print(f"[KeywordsEverbee] ERROR: Etsy Search config failed: {e}")
         base_url, headers = None, None
+        alt_file = None
 
     processed_ids: set[int] = set()
     ai_completed_ids: set[int] = set()
@@ -2076,7 +2078,11 @@ def keywords_and_everbee_stream_worker(popular_listings_path: str, outputs_dir: 
             r["timestamp"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             r["keyword"] = keyword
             _append_ev(listing_id, title, r)
-            print(f"[Everbee] listing_id={listing_id} kw='{keyword}' -> {r.get('status_code')} metrics={r.get('metrics')}")
+            msg = f"[Everbee] listing_id={listing_id} kw='{keyword}' -> {r.get('status_code')} metrics={r.get('metrics')}"
+            if r.get("fallback_used"):
+                tried = alt_file.name if alt_file else "second request file"
+                msg += f" | first failed, tried {tried}"
+            print(msg)
         futures.append(executor.submit(run_one))
 
     print(f"[KeywordsEverbee] START popular='{popular_listings_path}' -> ai='{ai_out.name}' ev='{ev_out.name}'")
