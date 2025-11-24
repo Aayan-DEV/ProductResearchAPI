@@ -1,4 +1,3 @@
-# Docker build with Python and curl installed (no railpack). Simple and reliable.
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
