@@ -22,7 +22,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from difflib import SequenceMatcher
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))
 import requests
-import time
 
 # ------------------------------
 # Discovery helpers
@@ -478,7 +477,6 @@ def main() -> None:
                 "error": result.get("error"),
             })
             msg = f"[Everbee] listing_id={listing_id} kw='{kw}' -> {result.get('status_code')} metrics={metrics}"
-            time.sleep(3)
             if result.get("fallback_used"):
                 tried = f"{alt_file.name}" if alt_file else "second request file"
                 msg += f" | first failed, tried {tried}"
@@ -501,114 +499,76 @@ def discover_etsy_search_req_file_alt(root: Path) -> Optional[Path]:
     return alt if alt.exists() else None
 
 def ensure_etsy_search_config(root: Optional[Path] = None) -> Tuple[str, Dict[str, str]]:
-    """
-    Resolve base_url and headers for Etsy Search (Marketplace Insights).
-    """
     global _ETSY_SEARCH_CFG
-    global _ETSY_SEARCH_CFG, _ETSY_SEARCH_ALT
     if _ETSY_SEARCH_CFG is not None:
         return _ETSY_SEARCH_CFG
-    base = project_root() if root is None else root
-    req_file = discover_etsy_search_req_file(base)
-    if not req_file:
-        raise RuntimeError("Etsy Search curl request file not found in EtoRequests/Etsy_Search.")
-    base_url, headers = parse_curl_file(req_file)
+    base_url, headers = ensure_everbee_config(project_root() if root is None else root)
     _ETSY_SEARCH_CFG = (base_url, headers)
-    alt_file = discover_etsy_search_req_file_alt(base)
-    if alt_file:
-        try:
-            alt_url, alt_headers = parse_curl_file(alt_file)
-            _ETSY_SEARCH_ALT = (alt_url, alt_headers)
-        except Exception:
-            _ETSY_SEARCH_ALT = None
     return _ETSY_SEARCH_CFG
+
+_EVERBEE_CFG = None
+
+def replace_keyword_in_url(base_url: str, keyword: str) -> str:
+    parsed = urllib.parse.urlparse(base_url)
+    q = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    q["keyword"] = [keyword]
+    new_query = urllib.parse.urlencode(q, doseq=True, quote_via=urllib.parse.quote)
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
+
+def discover_everbee_req_file(root: Path) -> Optional[Path]:
+    p = root / "EtoRequests" / "Everbee" / "req1.txt"
+    return p if p.exists() else None
+
+def ensure_everbee_config(root: Optional[Path] = None) -> Tuple[str, Dict[str, str]]:
+    global _EVERBEE_CFG
+    if _EVERBEE_CFG is not None:
+        return _EVERBEE_CFG
+    base = project_root() if root is None else root
+    req_file = discover_everbee_req_file(base)
+    if not req_file:
+        raise RuntimeError("Everbee curl request file not found at EtoRequests/Everbee/req1.txt.")
+    url, headers = parse_curl_file(req_file)
+    _EVERBEE_CFG = (url, headers)
+    return _EVERBEE_CFG
+
+def replace_keyword_in_url(base_url: str, keyword: str) -> str:
+    parsed = urllib.parse.urlparse(base_url)
+    q = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+    q["keyword"] = [keyword]
+    new_query = urllib.parse.urlencode(q, doseq=True, quote_via=urllib.parse.quote)
+    return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
 def fetch_metrics_for_keyword(keyword: str, base_url: Optional[str] = None, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     if not base_url or not headers:
-        base_url, headers = ensure_etsy_search_config()
-    url = replace_query_in_url(base_url, keyword)
-
-    headers_to_use = dict(headers or {})
-    update_header_referer(headers_to_use, keyword)
-    headers_to_use = sanitize_headers_for_requests(headers_to_use)
-
+        base_url, headers = ensure_everbee_config()
+    url = replace_keyword_in_url(base_url, keyword)
+    headers_to_use = sanitize_headers_for_requests(dict(headers or {}))
     try:
-        resp = requests.get(url, headers=headers_to_use, timeout=REQUEST_TIMEOUT)
+        resp = requests.post(url, headers=headers_to_use, timeout=REQUEST_TIMEOUT)
         status = resp.status_code
         try:
-            resp_json = resp.json()
+            obj = resp.json()
         except Exception:
-            resp_json = {"_non_json_response": resp.text}
-        if status and status >= 400:
-            alt = globals().get("_ETSY_SEARCH_ALT")
-            if alt:
-                alt_url_base, alt_headers = alt
-                alt_url = replace_query_in_url(alt_url_base, keyword)
-                alt_headers_use = sanitize_headers_for_requests(dict(alt_headers or {}))
-                update_header_referer(alt_headers_use, keyword)
-                try:
-                    alt_resp = requests.get(alt_url, headers=alt_headers_use, timeout=REQUEST_TIMEOUT)
-                    try:
-                        alt_resp_json = alt_resp.json()
-                    except Exception:
-                        alt_resp_json = {"_non_json_response": alt_resp.text}
-                    alt_metrics = extract_metrics_from_response(alt_resp_json)
-                    return {
-                        "keyword": keyword,
-                        "request_url": alt_url,
-                        "status_code": alt_resp.status_code,
-                        "metrics": alt_metrics,
-                        "response": alt_resp_json,
-                        "fallback_used": True,
-                    }
-                except Exception as e2:
-                    return {
-                        "keyword": keyword,
-                        "request_url": alt_url,
-                        "status_code": None,
-                        "metrics": {"vol": None, "competition": None},
-                        "error": str(e2),
-                        "fallback_used": True,
-                    }
-        metrics = extract_metrics_from_response(resp_json)
+            obj = {"_non_json_response": resp.text}
+        sk = obj.get("searched_keyword")
+        vol = None
+        comp = None
+        if isinstance(sk, list) and sk:
+            row = sk[0] if isinstance(sk[0], dict) else {}
+            vol = row.get("vol")
+            comp = row.get("competition")
+        metrics = {
+            "vol": int(float(vol)) if vol is not None else None,
+            "competition": int(float(comp)) if comp is not None else None,
+        }
         return {
             "keyword": keyword,
             "request_url": url,
             "status_code": status,
             "metrics": metrics,
-            "response": resp_json,
+            "response": obj,
         }
     except Exception as e:
-        alt = globals().get("_ETSY_SEARCH_ALT")
-        if alt:
-            alt_url_base, alt_headers = alt
-            alt_url = replace_query_in_url(alt_url_base, keyword)
-            alt_headers_use = sanitize_headers_for_requests(dict(alt_headers or {}))
-            update_header_referer(alt_headers_use, keyword)
-            try:
-                alt_resp = requests.get(alt_url, headers=alt_headers_use, timeout=REQUEST_TIMEOUT)
-                try:
-                    alt_resp_json = alt_resp.json()
-                except Exception:
-                    alt_resp_json = {"_non_json_response": alt_resp.text}
-                alt_metrics = extract_metrics_from_response(alt_resp_json)
-                return {
-                    "keyword": keyword,
-                    "request_url": alt_url,
-                    "status_code": alt_resp.status_code,
-                    "metrics": alt_metrics,
-                    "response": alt_resp_json,
-                    "fallback_used": True,
-                }
-            except Exception as e2:
-                return {
-                    "keyword": keyword,
-                    "request_url": alt_url,
-                    "status_code": None,
-                    "metrics": {"vol": None, "competition": None},
-                    "error": str(e2),
-                    "fallback_used": True,
-                }
         return {
             "keyword": keyword,
             "request_url": url,
@@ -618,13 +578,10 @@ def fetch_metrics_for_keyword(keyword: str, base_url: Optional[str] = None, head
         }
 
 def fetch_metrics_for_keywords(keywords: List[str], base_url: Optional[str] = None, headers: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
-    """
-    Batch convenience wrapper; sequential for simplicity and rate-limit friendliness.
-    """
     results = []
     for kw in keywords:
         results.append(fetch_metrics_for_keyword(kw, base_url, headers))
     return results
-
+    
 if __name__ == "__main__":
     main()
