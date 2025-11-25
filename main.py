@@ -521,11 +521,6 @@ def reconnect_stream(payload: ReconnectRequest):
     )
 
 def ensure_model_available() -> Dict[str, any]:
-    """
-    Ensure the GGUF model exists at MODEL_PATH.
-    If missing and MODEL_URL is set, download it once.
-    Fallback to PROJECT_ROOT/data/models when /data is not writable (local dev).
-    """
     project_root = Path(__file__).resolve().parent
     preferred_dir = Path(os.getenv("MODEL_DIR") or "/data/models")
     fallback_dir = project_root / "data" / "models"
@@ -535,253 +530,54 @@ def ensure_model_available() -> Dict[str, any]:
     model_url = os.getenv("MODEL_URL", "")
     model_sha256 = os.getenv("MODEL_SHA256", "")
 
-    # Decide model_dir based on writability
     model_dir = preferred_dir
+    if model_path_env:
+        mp = Path(model_path_env)
+        if not mp.is_absolute():
+            mp = project_root / mp
+        model_path = mp
+    else:
+        model_path = model_dir / default_name
     status = {
         "model_dir": str(model_dir),
-        "model_path": None,
+        "model_path": str(model_path),
         "model_present": False,
         "model_size_bytes": None,
         "volume_mounted": False,
         "downloaded": False,
         "error": None,
     }
-
     try:
-        # Try preferred dir (/data/models)
-        try:
-            model_dir.mkdir(parents=True, exist_ok=True)
-            test_file = model_dir / ".rw_test"
-            test_file.write_text("ok", encoding="utf-8")
-            test_file.unlink(missing_ok=True)
-            status["volume_mounted"] = True
-        except Exception:
-            # Fallback to local project dir
-            model_dir = fallback_dir
-            status["volume_mounted"] = False
-            status["model_dir"] = str(model_dir)
-            model_dir.mkdir(parents=True, exist_ok=True)
-
-        # Resolve model_path
-        if model_path_env:
-            mp = Path(model_path_env)
-            if not mp.is_absolute():
-                mp = project_root / mp
-            model_path = mp
-        else:
-            model_path = model_dir / default_name
-        status["model_path"] = str(model_path)
-
-        # Short-circuit if present
-        if model_path.exists() and model_path.is_file():
-            status["model_present"] = True
-            status["model_size_bytes"] = model_path.stat().st_size
-            # Reset progress (already present)
-            try:
-                download_progress.update({
-                    "status": "idle",
-                    "source": None,
-                    "destination": str(model_path),
-                    "total_bytes": status["model_size_bytes"],
-                    "downloaded_bytes": status["model_size_bytes"],
-                    "percent": 100.0,
-                    "speed_bps": None,
-                    "eta_seconds": 0.0,
-                    "started_at": None,
-                    "updated_at": time.time(),
-                    "error": None,
-                })
-            except Exception:
-                pass
-            return status
-
-        if not model_url:
-            status["error"] = f"Model missing at {model_path} and MODEL_URL not set"
-            print(
-                f"[Model Error] AI model not available.\n"
-                f"  model_dir={status['model_dir']}\n"
-                f"  model_path={status['model_path']}\n"
-                f"  Hint: set MODEL_PATH to a .gguf file or set MODEL_URL to a direct download URL; optionally set MODEL_DIR to a writable location (volume_mounted={status['volume_mounted']}).",
-                flush=True,
-            )
-            return status
-
-        # Robust download with simple retry/backoff
-        tmp_path = model_path.with_suffix(model_path.suffix + ".tmp")
-        # Pre-clean any stale temp file
-        try:
-            if tmp_path.exists():
-                tmp_path.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-        tries = 3
-        last_err = None
-        for i in range(1, tries + 1):
-            try:
-                # Ensure only one concurrent download attempt
-                with download_lock:
-                    # Initialize progress
-                    try:
-                        download_progress.update({
-                            "status": "downloading",
-                            "source": model_url,
-                            "destination": str(model_path),
-                            "total_bytes": None,
-                            "downloaded_bytes": 0,
-                            "percent": None,
-                            "speed_bps": None,
-                            "eta_seconds": None,
-                            "started_at": time.time(),
-                            "updated_at": time.time(),
-                            "error": None,
-                        })
-                    except Exception:
-                        pass
-                    last_logged_percent = -5.0
-                    last_logged_time = time.time()
-
-                    with requests.get(model_url, stream=True, timeout=600) as r:
-                        r.raise_for_status()
-                        # Total size if known
-                        total_hdr = r.headers.get("Content-Length")
-                        total = int(total_hdr) if total_hdr and total_hdr.isdigit() else None
-                        try:
-                            download_progress["total_bytes"] = total
-                        except Exception:
-                            pass
-
-                        hasher = None
-                        if model_sha256:
-                            import hashlib
-                            hasher = hashlib.sha256()
-
-                        downloaded = 0
-                        start_t = time.time()
-                        with open(tmp_path, "wb") as f:
-                            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
-                                if not chunk:
-                                    continue
-                                f.write(chunk)
-                                downloaded += len(chunk)
-                                if hasher:
-                                    hasher.update(chunk)
-
-                                # Update progress metrics
-                                now = time.time()
-                                elapsed = max(now - start_t, 1e-6)
-                                speed = downloaded / elapsed
-                                percent = (downloaded / total * 100.0) if total else None
-                                eta = ((total - downloaded) / speed) if (total and speed > 0) else None
-
-                                try:
-                                    download_progress.update({
-                                        "downloaded_bytes": downloaded,
-                                        "speed_bps": speed,
-                                        "percent": percent,
-                                        "eta_seconds": eta,
-                                        "updated_at": now,
-                                    })
-                                except Exception:
-                                    pass
-
-                                # Periodic log every 5 seconds or +5% progress
-                                should_log = (now - last_logged_time >= 5.0) or (
-                                    percent is not None and percent - last_logged_percent >= 5.0
-                                )
-                                if should_log:
-                                    last_logged_time = now
-                                    last_logged_percent = percent or last_logged_percent
-                                    if percent is not None and total is not None:
-                                        print(f"[Download] {percent:.1f}% ({downloaded}/{total} bytes) "
-                                              f"speed={speed/1e6:.2f} MB/s eta={int(eta or 0)}s", flush=True)
-                                    else:
-                                        print(f"[Download] {downloaded} bytes streamed "
-                                              f"speed={speed/1e6:.2f} MB/s", flush=True)
-
-                    # Checksum if provided
-                    if model_sha256:
-                        digest = hasher.hexdigest() if hasher else ""
-                        if digest.lower() != model_sha256.strip().lower():
-                            try:
-                                tmp_path.unlink(missing_ok=True)
-                            except Exception:
-                                pass
-                            raise RuntimeError(f"SHA256 mismatch: expected {model_sha256}, got {digest}")
-
-                    # Finalize
-                    tmp_path.replace(model_path)
-                    status["downloaded"] = True
-                    status["model_present"] = True
-                    status["model_size_bytes"] = model_path.stat().st_size
-
-                    try:
-                        download_progress.update({
-                            "status": "complete",
-                            "destination": str(model_path),
-                            "total_bytes": status["model_size_bytes"],
-                            "downloaded_bytes": status["model_size_bytes"],
-                            "percent": 100.0,
-                            "eta_seconds": 0.0,
-                            "updated_at": time.time(),
-                        })
-                    except Exception:
-                        pass
-                    return status
-            except Exception as e:
-                last_err = e
-                # Clean tmp on failure
-                try:
-                    tmp_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
-                backoff = 2 ** (i - 1)
-                try:
-                    download_progress.update({
-                        "status": "error",
-                        "error": str(e),
-                        "updated_at": time.time(),
-                    })
-                except Exception:
-                    pass
-                print(f"[Startup] Download attempt {i}/{tries} failed: {e}. Retrying in {backoff}s...", flush=True)
-                time.sleep(backoff)
-
-        status["error"] = f"Download failed after {tries} attempts: {last_err}"
-        print(
-            f"[Model Error] Download failed after {tries} attempts: {last_err}\n"
-            f"  source={model_url}\n"
-            f"  destination={status['model_path']}\n"
-            f"  Hint: verify MODEL_URL is reachable and correct; if using MODEL_SHA256 ensure checksum matches; alternatively mount a model file and set MODEL_PATH.",
-            flush=True,
-        )
-        return status
-    except Exception as e:
-        status["error"] = str(e)
-        print(
-            f"[Model Error] Unexpected error ensuring model: {e}\n"
-            f"  model_dir={status['model_dir']}\n"
-            f"  destination={status['model_path']}",
-            flush=True,
-        )
-        return status
+        download_progress.update({
+            "status": "idle",
+            "source": None,
+            "destination": None,
+            "total_bytes": None,
+            "downloaded_bytes": 0,
+            "percent": None,
+            "speed_bps": None,
+            "eta_seconds": None,
+            "started_at": None,
+            "updated_at": time.time(),
+            "error": None,
+        })
+    except Exception:
+        pass
+    return status
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    threading.Thread(target=ensure_model_available, daemon=True, name="model-ensure").start()
     yield
 
-# Do NOT recreate `app` here; attach a startup hook instead so routes remain.
-# Attach startup hook; do not recreate `app` again.
 @app.on_event("startup")
 async def _startup():
-    threading.Thread(target=ensure_model_available, daemon=True, name="model-ensure").start()
+    pass
 
 @app.get("/ready")
 def ready() -> Dict:
     st = ensure_model_available()
     return {
-        "status": "ok" if st["model_present"] and not st["error"] else "degraded",
+        "status": "ok",
         "model_dir": st["model_dir"],
         "model_path": st["model_path"],
         "model_present": st["model_present"],
