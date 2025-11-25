@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from difflib import SequenceMatcher
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "30"))
 import requests
+import time
 
 # ------------------------------
 # Discovery helpers
@@ -477,6 +478,7 @@ def main() -> None:
                 "error": result.get("error"),
             })
             msg = f"[Everbee] listing_id={listing_id} kw='{kw}' -> {result.get('status_code')} metrics={metrics}"
+            time.sleep(3)
             if result.get("fallback_used"):
                 tried = f"{alt_file.name}" if alt_file else "second request file"
                 msg += f" | first failed, tried {tried}"

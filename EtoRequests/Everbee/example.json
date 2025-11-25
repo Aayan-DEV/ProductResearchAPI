@@ -1,0 +1,360 @@
+{
+    "total_count": 117,
+    "total_pages": 6,
+    "searched_keyword": [
+        {
+            "id": "1a13d3d1-bae7-46ef-910f-36375871604c",
+            "keyword": "guess who template",
+            "vol": 73,
+            "cpc": null,
+            "competition": 2931.0,
+            "created_at": "2023-05-24T16:44:39.067Z",
+            "updated_at": "2025-06-16T21:02:49.851Z",
+            "new_volume": 73,
+            "score": "30.0",
+            "trend": []
+        }
+    ],
+    "results": [
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "3dfc7c8e-0950-4ee9-bd4f-a755a5298396",
+            "_score": null,
+            "sort": [
+                226
+            ],
+            "keyword": "template guess who",
+            "vol": 226,
+            "cpc": "0.00",
+            "competition": 2684,
+            "created_at": "2022-12-21T17:46:53.473Z",
+            "new_volume": 226,
+            "score": 80.0,
+            "id": "3dfc7c8e-0950-4ee9-bd4f-a755a5298396",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "ed30e0ae-d1b0-4d8e-bbd2-08bdd97e3d0e",
+            "_score": null,
+            "sort": [
+                218
+            ],
+            "keyword": "guess who template game",
+            "vol": 218,
+            "cpc": null,
+            "competition": 2428,
+            "created_at": "2023-06-19T12:26:18.605Z",
+            "new_volume": 218,
+            "score": 90.0,
+            "id": "ed30e0ae-d1b0-4d8e-bbd2-08bdd97e3d0e",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "c66da31a-a4f4-448f-9478-118fd1a42fd8",
+            "_score": null,
+            "sort": [
+                210
+            ],
+            "keyword": "templates guess who",
+            "vol": 210,
+            "cpc": "0.00",
+            "competition": 2670,
+            "created_at": "2022-12-16T16:30:22.596Z",
+            "new_volume": 210,
+            "score": 80.0,
+            "id": "c66da31a-a4f4-448f-9478-118fd1a42fd8",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "302e63d1-bee7-4634-a9ab-434018688402",
+            "_score": null,
+            "sort": [
+                145
+            ],
+            "keyword": "guess who template editable",
+            "vol": 145,
+            "cpc": "0.05",
+            "competition": 1775,
+            "created_at": "2022-12-17T21:34:14.122Z",
+            "new_volume": 145,
+            "score": 80.0,
+            "id": "302e63d1-bee7-4634-a9ab-434018688402",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "2d80194b-7df9-43a4-b2f0-3390ef354da3",
+            "_score": null,
+            "sort": [
+                145
+            ],
+            "keyword": "editable guess who template",
+            "vol": 145,
+            "cpc": null,
+            "competition": 1774,
+            "created_at": "2023-12-30T03:59:01.441Z",
+            "new_volume": 145,
+            "score": 80.0,
+            "id": "2d80194b-7df9-43a4-b2f0-3390ef354da3",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "4070453b-d73b-4aef-af03-43f80e15b44e",
+            "_score": null,
+            "sort": [
+                142
+            ],
+            "keyword": "guess who printable template",
+            "vol": 142,
+            "cpc": "0.09",
+            "competition": 1914,
+            "created_at": "2023-01-07T19:55:00.730Z",
+            "new_volume": 142,
+            "score": 70.0,
+            "id": "4070453b-d73b-4aef-af03-43f80e15b44e",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "77e6d233-fbbf-4fd9-9100-43cafb7e9076",
+            "_score": null,
+            "sort": [
+                141
+            ],
+            "keyword": "guess who editable template",
+            "vol": 141,
+            "cpc": "0.00",
+            "competition": 1784,
+            "created_at": "2022-12-02T15:35:02.955Z",
+            "new_volume": 141,
+            "score": 80.0,
+            "id": "77e6d233-fbbf-4fd9-9100-43cafb7e9076",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "7514597c-d119-4704-ab86-378aa935d2cb",
+            "_score": null,
+            "sort": [
+                131
+            ],
+            "keyword": "editable template guess who",
+            "vol": 131,
+            "cpc": null,
+            "competition": 1845,
+            "created_at": "2025-05-04T11:27:45.057Z",
+            "new_volume": 131,
+            "score": 0.0,
+            "id": "7514597c-d119-4704-ab86-378aa935d2cb",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "61ca393a-145f-4440-9018-358d8655b6d7",
+            "_score": null,
+            "sort": [
+                123
+            ],
+            "keyword": "guess who game editable template",
+            "vol": 123,
+            "cpc": null,
+            "competition": 1680,
+            "created_at": "2025-05-01T09:44:51.875Z",
+            "new_volume": 123,
+            "score": 0.0,
+            "id": "61ca393a-145f-4440-9018-358d8655b6d7",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "b88d49d3-41de-473e-885f-80a340baffb9",
+            "_score": null,
+            "sort": [
+                122
+            ],
+            "keyword": "editable template guess who game",
+            "vol": 122,
+            "cpc": null,
+            "competition": 1709,
+            "created_at": "2025-05-04T11:27:45.296Z",
+            "new_volume": 122,
+            "score": 0.0,
+            "id": "b88d49d3-41de-473e-885f-80a340baffb9",
+            "trend": null
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "d1d77511-08a2-43e6-821e-f2beb42aecb9",
+            "_score": null,
+            "sort": [
+                96
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2022-11-18T21:51:33.369Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "d1d77511-08a2-43e6-821e-f2beb42aecb9",
+            "trend": "Please upgrade"
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "38eef071-2e41-458a-ac75-63a3f2ce819c",
+            "_score": null,
+            "sort": [
+                96
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2025-02-11T18:22:34.544Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "38eef071-2e41-458a-ac75-63a3f2ce819c",
+            "trend": "Please upgrade"
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "ccf74f3f-4b1a-404c-9f60-1a27a9fd5e23",
+            "_score": null,
+            "sort": [
+                96
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2023-12-05T12:16:32.550Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "ccf74f3f-4b1a-404c-9f60-1a27a9fd5e23",
+            "trend": "Please upgrade"
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "efe6bf09-3b4a-4ad2-8a33-3dd35077f438",
+            "_score": null,
+            "sort": [
+                96
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2025-02-19T00:51:43.637Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "efe6bf09-3b4a-4ad2-8a33-3dd35077f438",
+            "trend": "Please upgrade"
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "9afc98f2-617d-4bcb-be83-58bced6c4413",
+            "_score": null,
+            "sort": [
+                90
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2025-02-19T00:52:06.924Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "9afc98f2-617d-4bcb-be83-58bced6c4413",
+            "trend": "Please upgrade"
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "1db0f535-550d-4a2d-a39f-792d8eb79305",
+            "_score": null,
+            "sort": [
+                86
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2025-06-20T15:27:12.369Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "1db0f535-550d-4a2d-a39f-792d8eb79305",
+            "trend": "Please upgrade"
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "dd057513-7143-45b2-b987-5e7280c1805f",
+            "_score": null,
+            "sort": [
+                83
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2022-11-21T04:38:38.544Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "dd057513-7143-45b2-b987-5e7280c1805f",
+            "trend": "Please upgrade"
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "b08f4120-2ca1-45d5-aaa7-489572d5c937",
+            "_score": null,
+            "sort": [
+                80
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2024-09-01T11:27:08.067Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "b08f4120-2ca1-45d5-aaa7-489572d5c937",
+            "trend": "Please upgrade"
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "97652b67-b08d-46eb-87cf-dea2257e947d",
+            "_score": null,
+            "sort": [
+                77
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2025-07-02T15:43:51.451Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "97652b67-b08d-46eb-87cf-dea2257e947d",
+            "trend": "Please upgrade"
+        },
+        {
+            "_index": "keyword_analytics_production_20251103050327187",
+            "_id": "d74c86e0-bc42-490d-86a5-52f188f741bd",
+            "_score": null,
+            "sort": [
+                77
+            ],
+            "keyword": "Please upgrade",
+            "vol": "Please upgrade",
+            "cpc": "Please upgrade",
+            "competition": "Please upgrade",
+            "created_at": "2025-06-12T16:20:17.013Z",
+            "new_volume": "Please upgrade",
+            "score": "Please upgrade",
+            "id": "d74c86e0-bc42-490d-86a5-52f188f741bd",
+            "trend": "Please upgrade"
+        }
+    ]
+}
