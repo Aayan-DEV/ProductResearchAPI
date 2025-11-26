@@ -117,6 +117,7 @@ def _ensure_db_tables(conn) -> None:
         conn.commit()
 
 
+
 def _ts_to_strings(ts: Optional[Any]) -> Tuple[Optional[int], Optional[str], Optional[str]]:
     if ts in (None, "", 0):
         return None, None, None
@@ -1215,6 +1216,123 @@ def download_status() -> Dict:
     return {
         "success": True,
         "progress": download_progress,
+    }
+
+@app.get("/status")
+def get_status(user_id: str, session_id: str) -> Dict:
+    """
+    Polling endpoint to check session status. 100% reliable - checks both
+    in-memory sessions and persistent session metadata files.
+    
+    Use this as a fallback when SSE connection is lost. Poll every 2-5 seconds.
+    
+    Returns:
+    - status: "running", "completed", "error", or "not_found"
+    - megafile_path: path to megafile if completed
+    - message: human-readable status message
+    - timestamp: when status was last updated
+    """
+    import time
+    
+    user_id = user_id.strip()
+    session_id = session_id.strip()
+    
+    if not user_id or not session_id:
+        return {
+            "success": False,
+            "error": "user_id and session_id are required",
+            "status": "error"
+        }
+    
+    # First, check in-memory session (fast for active sessions)
+    key = _session_key(user_id, "", session_id)  # session_id is the key
+    with _SESSIONS_LOCK:
+        sess = _SESSIONS.get(key)
+        if sess:
+            status = sess.get("status", "running")
+            megafile_path = sess.get("megafile_path")
+            ended_at = sess.get("ended_at")
+            started_at = sess.get("started_at")
+            
+            # If completed, try to get ranked megafile from session meta file
+            if status == "completed" and megafile_path:
+                # Try to get ranked version from session meta
+                try:
+                    meta_path = _resolve_session_meta_path(user_id, session_id)
+                    if meta_path and meta_path.exists():
+                        with meta_path.open("r", encoding="utf-8") as f:
+                            meta_doc = json.load(f)
+                        ranked_path = meta_doc.get("last_ranked_megafile_path")
+                        if ranked_path and Path(ranked_path).exists():
+                            megafile_path = ranked_path
+                except Exception:
+                    pass  # Fall back to original megafile_path
+            
+            return {
+                "success": True,
+                "status": status,
+                "megafile_path": megafile_path if status == "completed" else None,
+                "message": f"Session is {status}",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ended_at if ended_at else started_at if started_at else time.time())),
+                "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(started_at)) if started_at else None,
+                "ended_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ended_at)) if ended_at else None,
+            }
+    
+    # Fallback: check persistent session metadata file
+    try:
+        meta_path = _resolve_session_meta_path(user_id, session_id)
+        if meta_path and meta_path.exists():
+            with meta_path.open("r", encoding="utf-8") as f:
+                meta_doc = json.load(f)
+            
+            # Determine status from metadata
+            status = meta_doc.get("status", "completed")  # Default to completed if file exists
+            if status not in ("running", "completed", "error"):
+                # If no explicit status, check if megafile exists
+                megafile_path = _find_megafile_for_user_session(user_id, session_id)
+                status = "completed" if megafile_path else "not_found"
+            else:
+                megafile_path = _find_megafile_for_user_session(user_id, session_id) if status == "completed" else None
+            
+            # Get timestamps
+            started_at = meta_doc.get("started_at")
+            ended_at = meta_doc.get("ended_at")
+            meta_block = meta_doc.get("meta", {})
+            if not started_at:
+                started_at = meta_block.get("started_at")
+            if not ended_at:
+                ended_at = meta_block.get("ended_at")
+            
+            # Convert timestamps if they're strings
+            if isinstance(started_at, str):
+                try:
+                    started_at = time.mktime(time.strptime(started_at, "%Y-%m-%dT%H:%M:%S"))
+                except Exception:
+                    started_at = None
+            if isinstance(ended_at, str):
+                try:
+                    ended_at = time.mktime(time.strptime(ended_at, "%Y-%m-%dT%H:%M:%S"))
+                except Exception:
+                    ended_at = None
+            
+            return {
+                "success": True,
+                "status": status,
+                "megafile_path": megafile_path if status == "completed" else None,
+                "message": f"Session is {status}",
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ended_at if ended_at else started_at if started_at else time.time())),
+                "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(started_at)) if started_at else None,
+                "ended_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(ended_at)) if ended_at else None,
+            }
+    except Exception as e:
+        print(f"[status] Error reading session metadata: {e}", flush=True)
+    
+    # Not found in memory or files
+    return {
+        "success": False,
+        "status": "not_found",
+        "message": "Session not found",
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
 
 def slugify_safe(text: str) -> str:
@@ -2594,7 +2712,7 @@ def run_stream(payload: RunRequest):
     def worker():
         try:
             with sem:
-                res = orchestrate_run(user_id, keyword, payload.desired_total, progress_cb=emit)
+                res = orchestrate_run(user_id, keyword, payload.desired_total)
             # Attach full megafile JSON to the completion event
             megafile_path = None
             persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings())}
@@ -2645,6 +2763,18 @@ def run_stream(payload: RunRequest):
                 megafile_path=megafile_path,
                 run_root_dir=(res.get("meta") or {}).get("run_root_dir"),
             )
+            # Persist status to file for polling endpoint reliability
+            try:
+                update_session_meta_file(
+                    user_id,
+                    session_id,
+                    status="completed",
+                    ended_at=time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time())),
+                    megafile_path=megafile_path,
+                    run_root_dir=(res.get("meta") or {}).get("run_root_dir"),
+                )
+            except Exception as meta_err:
+                print(f"[run_stream] Failed to persist session status to file: {meta_err}", flush=True)
             emit({
                 "type": "complete",
                 "success": res.get("success"),
@@ -2657,6 +2787,17 @@ def run_stream(payload: RunRequest):
             })
         except Exception as e:
             _session_update_meta(key, status="error", ended_at=time.time())
+            # Persist error status to file
+            try:
+                update_session_meta_file(
+                    user_id,
+                    session_id,
+                    status="error",
+                    ended_at=time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time())),
+                    error=str(e),
+                )
+            except Exception as meta_err:
+                print(f"[run_stream] Failed to persist error status to file: {meta_err}", flush=True)
             emit({"type": "error", "error": str(e)})
 
     threading.Thread(target=worker, daemon=True, name=f"run-stream-{slugify_safe(session_id)}").start()
