@@ -3,3 +3,4 @@ requests
 fastapi
 uvicorn
 llama-cpp-python
+psycopg[binary]

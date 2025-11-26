@@ -3,8 +3,10 @@ import os
 import sys
 import time
 import json
+import re
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple, Any
 import requests
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -16,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 import asyncio
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi import FastAPI, BackgroundTasks
+import psycopg
 
 # Ensure Helpers are importable and import singlesearch helper
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -45,6 +48,548 @@ download_progress: Dict[str, Optional[float | int | str]] = {
     "error": None,                  # str
 }
 download_lock = threading.Lock()
+
+DB_TABLE_ENTRIES = "ranked_entries"
+DB_TABLE_BATCHES = "ranked_batches"
+
+
+def _db_settings() -> Optional[Dict[str, str]]:
+    dsn = (
+        os.getenv("DB_URL")
+        or os.getenv("DATABASE_URL")
+        or os.getenv("RAILWAY_DATABASE_URL")
+    )
+    if not dsn:
+        return None
+    return {"DB_DSN": dsn}
+
+
+def _db_connect():
+    cfg = _db_settings()
+    if not cfg:
+        return None
+    return psycopg.connect(cfg["DB_DSN"])
+
+
+def _ensure_db_tables(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {DB_TABLE_BATCHES} (
+                batch_id TEXT PRIMARY KEY,
+                user_id TEXT,
+                session_id TEXT NOT NULL,
+                keyword TEXT,
+                keyword_slug TEXT,
+                entries_count INTEGER DEFAULT 0,
+                stored_at TIMESTAMPTZ DEFAULT NOW()
+            )
+            """
+        )
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {DB_TABLE_ENTRIES} (
+                batch_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                user_id TEXT,
+                keyword TEXT,
+                keyword_slug TEXT,
+                listing_id BIGINT NOT NULL,
+                ranking DOUBLE PRECISION,
+                demand DOUBLE PRECISION,
+                price_value DOUBLE PRECISION,
+                sale_price_value DOUBLE PRECISION,
+                review_count INTEGER,
+                review_average DOUBLE PRECISION,
+                payload JSONB NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (session_id, listing_id)
+            )
+            """
+        )
+        cur.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_ENTRIES}_batch ON {DB_TABLE_ENTRIES} (batch_id)"
+        )
+        cur.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_ENTRIES}_keyword ON {DB_TABLE_ENTRIES} (keyword_slug)"
+        )
+        conn.commit()
+
+
+def _ts_to_strings(ts: Optional[Any]) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    if ts in (None, "", 0):
+        return None, None, None
+    try:
+        ts_int = int(float(ts))
+        dt = datetime.fromtimestamp(ts_int, tz=timezone.utc)
+        return ts_int, dt.isoformat(), dt.strftime("%b %d, %Y")
+    except Exception:
+        try:
+            return int(ts), None, str(ts)
+        except Exception:
+            return None, None, str(ts)
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    if value in (None, "", False):
+        return None
+    try:
+        return float(value)
+    except Exception:
+        return None
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    if value in (None, "", False):
+        return None
+    try:
+        return int(float(value))
+    except Exception:
+        return None
+
+
+def _parse_sale_percent(sale_info: Optional[Dict[str, Any]]) -> Optional[float]:
+    if not sale_info:
+        return None
+    active = sale_info.get("active_promotion") or {}
+    promo_text = (
+        active.get("buyer_applied_promotion_description")
+        or active.get("buyer_promotion_description")
+        or ""
+    )
+    match = re.search(r"(\\d+(?:\\.\\d+)?)\\s*%", promo_text)
+    if match:
+        try:
+            return float(match.group(1))
+        except Exception:
+            pass
+    seller_promo = active.get("seller_marketing_promotion") or {}
+    pct = seller_promo.get("order_discount_pct") or seller_promo.get("items_in_set_discount_pct")
+    return _safe_float(pct)
+
+
+def _build_variations(entry: Dict[str, Any]) -> List[Dict[str, Any]]:
+    variations_cleaned = entry.get("variations_cleaned") or entry.get("popular_info", {}).get("variations_cleaned") or {}
+    variations = []
+    raw_list = variations_cleaned.get("variations")
+    if isinstance(raw_list, list):
+        for v in raw_list:
+            if not isinstance(v, dict):
+                continue
+            options_raw = v.get("options") or []
+            options = []
+            if isinstance(options_raw, list):
+                for o in options_raw:
+                    if isinstance(o, dict):
+                        options.append(
+                            {
+                                "value": o.get("value"),
+                                "label": o.get("label"),
+                            }
+                        )
+            variations.append(
+                {
+                    "id": v.get("id"),
+                    "title": v.get("title"),
+                    "options": options,
+                }
+            )
+    return variations
+
+
+def _collect_reviews(entry: Dict[str, Any], listing_id: Optional[int]) -> Tuple[List[Dict[str, Any]], Optional[int], Optional[float]]:
+    shop = entry.get("shop") or {}
+    shop_reviews = shop.get("reviews") or []
+    reviews = []
+    if listing_id is None:
+        return reviews, None, None
+    lid_str = str(listing_id)
+    for rv in shop_reviews:
+        if not isinstance(rv, dict):
+            continue
+        rv_lid = rv.get("listing_id")
+        if rv_lid is not None and str(rv_lid) != lid_str:
+            continue
+        created_iso = None
+        created_display = None
+        created_ts, created_iso, created_display = _ts_to_strings(rv.get("created_timestamp") or rv.get("create_timestamp"))
+        updated_ts, updated_iso, updated_display = _ts_to_strings(rv.get("updated_timestamp") or rv.get("update_timestamp"))
+        reviews.append(
+            {
+                "shop_id": rv.get("shop_id"),
+                "listing_id": rv_lid,
+                "transaction_id": rv.get("transaction_id"),
+                "buyer_user_id": rv.get("buyer_user_id"),
+                "rating": rv.get("rating"),
+                "review": rv.get("review"),
+                "language": rv.get("language"),
+                "image_url_fullxfull": rv.get("image_url_fullxfull"),
+                "created_timestamp": created_ts,
+                "created_iso": created_iso,
+                "created": created_display,
+                "updated_timestamp": updated_ts,
+                "updated_iso": updated_iso,
+                "updated": updated_display,
+            }
+        )
+    review_count = len(reviews) or None
+    review_average = None
+    if review_count:
+        try:
+            review_average = round(
+                sum(_safe_float(rv.get("rating")) or 0 for rv in reviews) / max(review_count, 1),
+                2,
+            )
+        except Exception:
+            review_average = None
+    return reviews, review_count, review_average
+
+
+def _build_keyword_insights(entry: Dict[str, Any]) -> List[Dict[str, Any]]:
+    everbee = entry.get("everbee") or {}
+    results = everbee.get("results") or []
+    insights: List[Dict[str, Any]] = []
+    if not isinstance(results, list):
+        return insights
+    for res in results:
+        if not isinstance(res, dict):
+            continue
+        stats_obj = (res.get("response") or {}).get("stats") or {}
+        daily_stats_block = (res.get("response") or {}).get("dailyStats") or {}
+        daily_list = daily_stats_block.get("stats") or []
+        cleaned_daily = []
+        if isinstance(daily_list, list):
+            for d in daily_list:
+                if isinstance(d, dict):
+                    cleaned_daily.append({"date": d.get("date"), "searchVolume": d.get("searchVolume")})
+        vol = res.get("metrics", {}).get("vol")
+        if vol is None:
+            vol = stats_obj.get("searchVolume")
+        comp = res.get("metrics", {}).get("competition")
+        if comp is None:
+            comp = stats_obj.get("avgTotalListings")
+        insights.append(
+            {
+                "keyword": res.get("keyword") or res.get("query"),
+                "vol": _safe_float(vol),
+                "competition": _safe_float(comp),
+                "stats": stats_obj,
+                "dailyStats": cleaned_daily,
+            }
+        )
+    return insights
+
+
+def _simplify_ranked_entry(entry: Dict[str, Any]) -> Tuple[Optional[int], Dict[str, Any], Dict[str, Optional[float | int]]]:
+    popular = entry.get("popular_info") or {}
+    listing_id = entry.get("listing_id") or popular.get("listing_id")
+    listing_id = _safe_int(listing_id)
+    if listing_id is None:
+        return None, {}, {}
+
+    title = entry.get("title") or popular.get("title") or ""
+    url = entry.get("url") or popular.get("url") or ""
+
+    demand = entry.get("demand_value")
+    if demand is None:
+        demand = popular.get("demand")
+    demand = _safe_float(demand)
+
+    ranking_candidates = [
+        entry.get("ranking"),
+        popular.get("ranking"),
+        entry.get("Ranking"),
+        popular.get("Ranking"),
+        entry.get("rank"),
+        popular.get("rank"),
+    ]
+    ranking = None
+    for cand in ranking_candidates:
+        ranking = _safe_float(cand)
+        if ranking is not None:
+            break
+
+    user_id = entry.get("user_id") or popular.get("user_id")
+    shop_id = entry.get("shop_id") or popular.get("shop_id")
+    state = entry.get("state") or popular.get("state") or ""
+    description = popular.get("description") or entry.get("description") or ""
+
+    made_ts, made_iso, made_disp = _ts_to_strings(
+        popular.get("original_creation_timestamp")
+        or popular.get("created_timestamp")
+        or entry.get("original_creation_timestamp")
+        or entry.get("created_timestamp")
+    )
+    last_ts, last_iso, last_disp = _ts_to_strings(
+        popular.get("last_modified_timestamp") or entry.get("last_modified_timestamp")
+    )
+
+    primary_image = entry.get("primary_image") or popular.get("primary_image") or {}
+    variations = _build_variations(entry)
+
+    tags = popular.get("tags") or entry.get("tags") or []
+    if not isinstance(tags, list):
+        tags = []
+    materials = popular.get("materials") or entry.get("materials") or []
+    if not isinstance(materials, list):
+        materials = []
+    keywords = entry.get("keywords") or []
+    if not isinstance(keywords, list):
+        keywords = []
+
+    price_obj = popular.get("price") or entry.get("price") or {}
+    price_amount = price_obj.get("amount")
+    price_divisor = price_obj.get("divisor") or 1
+    price_currency = price_obj.get("currency_code") or ""
+    price_value = None
+    price_display = None
+    try:
+        if price_amount is not None and price_divisor:
+            price_value = float(price_amount) / float(price_divisor)
+            price_display = f"{price_value:.2f} {price_currency}".strip()
+    except Exception:
+        price_value = None
+        price_display = None
+
+    sale_info = entry.get("sale_info") or popular.get("sale_info") or {}
+    sale_percent = _parse_sale_percent(sale_info)
+    sale_subtotal = sale_info.get("subtotal_after_discount")
+    sale_original_price = sale_info.get("original_price")
+    sale_price_value = None
+    sale_price_display = None
+    if isinstance(sale_subtotal, str) and sale_subtotal.strip():
+        cleaned = re.sub(r"[^0-9.]", "", sale_subtotal)
+        if cleaned:
+            sale_price_value = _safe_float(cleaned)
+            sale_price_display = sale_subtotal.strip()
+    elif price_value is not None and sale_percent is not None:
+        try:
+            sale_price_value = price_value * (1.0 - (sale_percent / 100.0))
+            sale_price_display = f"{sale_price_value:.2f} {price_currency}".strip()
+        except Exception:
+            sale_price_value = None
+            sale_price_display = None
+
+    quantity = entry.get("quantity") or popular.get("quantity")
+    num_favorers = entry.get("num_favorers") or popular.get("num_favorers")
+    listing_type = entry.get("listing_type") or popular.get("listing_type") or ""
+    file_data = entry.get("file_data") or popular.get("file_data") or ""
+    views = entry.get("views") or popular.get("views")
+
+    shop = entry.get("shop") or {}
+    shop_details = shop.get("details") or {}
+    shop_sections = shop.get("sections") or []
+    if not isinstance(shop_sections, list):
+        shop_sections = []
+    shop_reviews = shop.get("reviews") or []
+    if not isinstance(shop_reviews, list):
+        shop_reviews = []
+    reviews, review_count, review_average = _collect_reviews(entry, listing_id)
+
+    shop_created_ts, shop_created_iso, shop_created_disp = _ts_to_strings(
+        shop_details.get("created_timestamp") or shop_details.get("create_date") or shop.get("created_timestamp")
+    )
+    shop_updated_ts, shop_updated_iso, shop_updated_disp = _ts_to_strings(
+        shop_details.get("updated_timestamp") or shop_details.get("update_date") or shop.get("updated_timestamp")
+    )
+
+    shop_languages = shop_details.get("languages")
+    if not isinstance(shop_languages, list):
+        shop_languages = []
+
+    shop_obj = {
+        "shop_id": shop_details.get("shop_id") or shop.get("shop_id"),
+        "shop_name": shop_details.get("shop_name"),
+        "user_id": shop_details.get("user_id"),
+        "created_timestamp": shop_created_ts,
+        "created_iso": shop_created_iso,
+        "created": shop_created_disp,
+        "title": shop_details.get("title"),
+        "announcement": shop_details.get("announcement"),
+        "currency_code": shop_details.get("currency_code"),
+        "is_vacation": shop_details.get("is_vacation"),
+        "vacation_message": shop_details.get("vacation_message"),
+        "sale_message": shop_details.get("sale_message"),
+        "digital_sale_message": shop_details.get("digital_sale_message"),
+        "updated_timestamp": shop_updated_ts,
+        "updated_iso": shop_updated_iso,
+        "updated": shop_updated_disp,
+        "listing_active_count": shop_details.get("listing_active_count"),
+        "digital_listing_count": shop_details.get("digital_listing_count"),
+        "login_name": shop_details.get("login_name"),
+        "accepts_custom_requests": shop_details.get("accepts_custom_requests"),
+        "vacation_autoreply": shop_details.get("vacation_autoreply"),
+        "url": shop_details.get("url") or shop.get("url"),
+        "image_url_760x100": shop_details.get("image_url_760x100"),
+        "icon_url_fullxfull": shop_details.get("icon_url_fullxfull"),
+        "num_favorers": shop_details.get("num_favorers"),
+        "languages": shop_languages,
+        "review_average": shop_details.get("review_average"),
+        "review_count": shop_details.get("review_count"),
+        "sections": shop_sections,
+        "reviews": shop_reviews,
+        "shipping_from_country_iso": shop_details.get("shipping_from_country_iso"),
+        "transaction_sold_count": shop_details.get("transaction_sold_count"),
+    }
+
+    payload = {
+        "listing_id": listing_id,
+        "title": title,
+        "url": url,
+        "demand": demand,
+        "ranking": ranking,
+        "made_at": made_disp,
+        "made_at_iso": made_iso,
+        "made_at_ts": made_ts,
+        "last_modified": last_disp,
+        "last_modified_iso": last_iso,
+        "last_modified_timestamp": last_ts,
+        "primary_image": {"image_url": primary_image.get("image_url"), "srcset": primary_image.get("srcset")},
+        "variations": variations,
+        "has_variations": bool(variations),
+        "variations_cleaned": entry.get("variations_cleaned") or popular.get("variations_cleaned") or {},
+        "user_id": user_id,
+        "shop_id": shop_id,
+        "state": state,
+        "description": description,
+        "tags": tags,
+        "materials": materials,
+        "keywords": keywords,
+        "sections": shop_sections,
+        "reviews": reviews,
+        "review_average": review_average,
+        "review_count": review_count,
+        "keyword_insights": _build_keyword_insights(entry),
+        "sale_percent": sale_percent,
+        "sale_price_value": sale_price_value,
+        "sale_price_display": sale_price_display,
+        "sale_subtotal_after_discount": sale_subtotal,
+        "sale_original_price": sale_original_price,
+        "price_amount": price_amount,
+        "price_divisor": price_divisor,
+        "price_currency": price_currency,
+        "price_value": price_value,
+        "price_display": price_display,
+        "quantity": quantity,
+        "num_favorers": num_favorers,
+        "listing_type": listing_type,
+        "file_data": file_data,
+        "views": views,
+        "demand_extras": entry.get("demand_extras") or popular.get("demand_extras") or {},
+        "shop": shop_obj,
+    }
+
+    summary = {
+        "listing_id": listing_id,
+        "ranking": ranking,
+        "demand": demand,
+        "price_value": price_value,
+        "sale_price_value": sale_price_value,
+        "review_count": review_count,
+        "review_average": review_average,
+    }
+    return listing_id, payload, summary
+
+
+def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, session_id: str) -> Dict[str, Any]:
+    cfg = _db_settings()
+    if not cfg:
+        print("[db] Skipping persistence: database env vars not configured.", flush=True)
+        return {"saved": 0, "batch_id": None, "enabled": False}
+
+    entries = doc.get("entries") or []
+    if not entries:
+        print(f"[db] No entries to persist for session={session_id}; nothing written.", flush=True)
+        return {"saved": 0, "batch_id": None, "enabled": True}
+
+    slug = slugify_safe(keyword)
+    batch_id = f"{slug}-{session_id}-{int(time.time())}"
+    normalized_rows = []
+    for entry in entries:
+        listing_id, payload, summary = _simplify_ranked_entry(entry)
+        if listing_id is None or not payload:
+            continue
+        normalized_rows.append(
+            (
+                batch_id,
+                session_id,
+                user_id,
+                keyword,
+                slug,
+                listing_id,
+                summary.get("ranking"),
+                summary.get("demand"),
+                summary.get("price_value"),
+                summary.get("sale_price_value"),
+                summary.get("review_count"),
+                summary.get("review_average"),
+                json.dumps(payload, ensure_ascii=False),
+            )
+        )
+
+    if not normalized_rows:
+        print(f"[db] Entries payload normalized to 0 rows for session={session_id}; nothing written.", flush=True)
+        return {"saved": 0, "batch_id": batch_id, "enabled": True}
+
+    conn = _db_connect()
+    if conn is None:
+        print("[db] Unable to connect to PostgreSQL. Entries not saved.", flush=True)
+        return {"saved": 0, "batch_id": None, "enabled": False}
+
+    try:
+        _ensure_db_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                INSERT INTO {DB_TABLE_BATCHES} (batch_id, user_id, session_id, keyword, keyword_slug, entries_count)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (batch_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    keyword = EXCLUDED.keyword,
+                    keyword_slug = EXCLUDED.keyword_slug,
+                    entries_count = EXCLUDED.entries_count,
+                    stored_at = NOW()
+                """,
+                (batch_id, user_id, session_id, keyword, slug, len(normalized_rows)),
+            )
+            cur.executemany(
+                f"""
+                INSERT INTO {DB_TABLE_ENTRIES} (
+                    batch_id, session_id, user_id, keyword, keyword_slug,
+                    listing_id, ranking, demand, price_value, sale_price_value,
+                    review_count, review_average, payload
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s
+                )
+                ON CONFLICT (session_id, listing_id) DO UPDATE SET
+                    batch_id = EXCLUDED.batch_id,
+                    ranking = EXCLUDED.ranking,
+                    demand = EXCLUDED.demand,
+                    price_value = EXCLUDED.price_value,
+                    sale_price_value = EXCLUDED.sale_price_value,
+                    review_count = EXCLUDED.review_count,
+                    review_average = EXCLUDED.review_average,
+                    payload = EXCLUDED.payload,
+                    keyword = EXCLUDED.keyword,
+                    keyword_slug = EXCLUDED.keyword_slug,
+                    user_id = EXCLUDED.user_id,
+                    updated_at = NOW()
+                """,
+                normalized_rows,
+            )
+        conn.commit()
+        print(f"[db] Stored {len(normalized_rows)} ranked entries in batch {batch_id}.", flush=True)
+        return {"saved": len(normalized_rows), "batch_id": batch_id, "enabled": True}
+    except Exception as exc:
+        conn.rollback()
+        print(f"[db] Failed to store ranked entries: {exc}", flush=True)
+        return {"saved": 0, "batch_id": None, "enabled": True, "error": str(exc)}
+    finally:
+        conn.close()
 
 load_dotenv()
 OUTPUT_DIR = os.getenv("ETO_OUTPUT_DIR") or str(PROJECT_ROOT / "outputs")
@@ -175,6 +720,22 @@ def _resolve_session_meta_path(user_id: str, session_id: str) -> Optional[Path]:
             except Exception:
                 continue
         return None
+    except Exception:
+        return None
+
+
+def _resolve_keyword_for_session(user_id: str, session_id: str) -> Optional[str]:
+    """
+    Best-effort keyword lookup from the session meta JSON.
+    Used when endpoints (like replace-listing) need a keyword but only have session_id.
+    """
+    meta_path = _resolve_session_meta_path(user_id, session_id)
+    if not meta_path or not meta_path.exists():
+        return None
+    try:
+        with meta_path.open("r", encoding="utf-8") as f:
+            doc = json.load(f)
+        return doc.get("keyword") or (doc.get("meta") or {}).get("keyword")
     except Exception:
         return None
 
@@ -358,15 +919,39 @@ async def api_replace_listing(payload: ReplaceListingRequest):
             with open(ranked_path, "r", encoding="utf-8") as f:
                 ranked_json = json.load(f)
 
-            print("[ranking] Sending ranked megafile JSON to client.", flush=True)
-            def _notify_sent_replace():
-                print("[ranking] Sent ranked megafile JSON to client (replace-listing).", flush=True)
-            return JSONResponse(content=ranked_json, background=BackgroundTask(_notify_sent_replace))
+            keyword_hint = _resolve_keyword_for_session(payload.user_id, payload.session_id) or ranked_json.get("meta", {}).get("keyword_slug") or payload.session_id
+            persist_info = persist_ranked_entries(
+                ranked_json,
+                user_id=payload.user_id,
+                keyword=keyword_hint,
+                session_id=payload.session_id,
+            )
+            print("[ranking] Stored ranked megafile JSON in database (replace-listing).", flush=True)
+            return JSONResponse({
+                "status": "ok",
+                "session_id": payload.session_id,
+                "entries_saved": persist_info.get("saved"),
+                "batch_id": persist_info.get("batch_id"),
+                "db_enabled": persist_info.get("enabled", False),
+                "source": "db",
+            })
         except Exception as e:
             print(f"[ranking] Ranking failed; sending unranked megafile. Error: {e}", flush=True)
-            def _notify_sent_unranked():
-                print("[ranking] Sent unranked megafile JSON to client (replace-listing).", flush=True)
-            return JSONResponse(content=mega, background=BackgroundTask(_notify_sent_unranked))
+            persist_info = persist_ranked_entries(
+                mega,
+                user_id=payload.user_id,
+                keyword=_resolve_keyword_for_session(payload.user_id, payload.session_id) or payload.session_id,
+                session_id=payload.session_id,
+            )
+            return JSONResponse({
+                "status": "ok",
+                "session_id": payload.session_id,
+                "entries_saved": persist_info.get("saved"),
+                "batch_id": persist_info.get("batch_id"),
+                "db_enabled": persist_info.get("enabled", False),
+                "source": "db",
+                "warning": "Ranking failed; stored unranked payload",
+            })
     except Exception as e:
         return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
 
@@ -401,58 +986,81 @@ def reconnect_stream(payload: ReconnectRequest):
         if mf_path:
             try:
                 p = Path(mf_path)
-                # If already ranked, just read and send (no rebuild)
-                if p.name.endswith("_ranked.json"):
-                    with p.open("r", encoding="utf-8") as f:
-                        mf_json = json.load(f)
-                    print("[ranking] Reconnect: sending ranked megafile JSON (no rebuild).", flush=True)
-                    def _notify_sent_reconnect_ranked():
-                        print("[ranking] Reconnect: ranked megafile JSON sent.", flush=True)
-                    return JSONResponse(content=mf_json, background=BackgroundTask(_notify_sent_reconnect_ranked))
-
-                # Try sibling ranked without recomputing
+                doc = None
+                ranked_used = False
                 ranked_candidate = (
                     p.with_name(p.stem + "_ranked.json")
                     if p.suffix.lower() == ".json"
                     else p.with_name(p.name + "_ranked")
                 )
-                if ranked_candidate.exists():
+                if p.name.endswith("_ranked.json"):
+                    with p.open("r", encoding="utf-8") as f:
+                        doc = json.load(f)
+                    ranked_used = True
+                elif ranked_candidate.exists():
                     with ranked_candidate.open("r", encoding="utf-8") as f:
-                        mf_json = json.load(f)
-                    print(f"[ranking] Reconnect: using existing ranked file: {ranked_candidate}", flush=True)
-                    def _notify_sent_reconnect_sibling():
-                        print("[ranking] Reconnect: ranked megafile JSON sent (existing sibling).", flush=True)
-                    return JSONResponse(content=mf_json, background=BackgroundTask(_notify_sent_reconnect_sibling))
+                        doc = json.load(f)
+                    ranked_used = True
+                else:
+                    import ranking as rnk
+                    print("[ranking] Reconnect: no ranked file found; ranking once.", flush=True)
+                    ranked_path = rnk.rank_megafile(str(p))
+                    ranked_used = True
+                    try:
+                        update_session_meta_file(
+                            user_id,
+                            session_id,
+                            last_ranked_megafile_path=str(ranked_path),
+                            last_megafile_path=str(p),
+                            last_action="reconnect_ranked",
+                            timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        )
+                    except Exception:
+                        pass
+                    with open(ranked_path, "r", encoding="utf-8") as f:
+                        doc = json.load(f)
 
-                # Fallback: build ranked once, then return and persist path in session meta
-                import ranking as rnk
-                print("[ranking] Reconnect: no ranked file found; ranking once.", flush=True)
-                ranked_path = rnk.rank_megafile(str(p))
-                try:
-                    update_session_meta_file(
-                        user_id,
-                        session_id,
-                        last_ranked_megafile_path=str(ranked_path),
-                        last_megafile_path=str(p),
-                        last_action="reconnect_ranked",
-                        timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
-                    )
-                except Exception:
-                    pass
-                with open(ranked_path, "r", encoding="utf-8") as f:
-                    mf_json = json.load(f)
-                print("[ranking] Reconnect: sending ranked megafile JSON.", flush=True)
-                def _notify_sent_reconnect_new():
-                    print("[ranking] Reconnect: ranked megafile JSON sent (newly built).", flush=True)
-                return JSONResponse(content=mf_json, background=BackgroundTask(_notify_sent_reconnect_new))
+                if not doc:
+                    raise RuntimeError("Megafile payload missing")
+
+                persist_info = persist_ranked_entries(
+                    doc,
+                    user_id=user_id,
+                    keyword=keyword,
+                    session_id=session_id,
+                )
+                print(f"[ranking] Reconnect: stored ranked megafile (entries={persist_info.get('saved')}).", flush=True)
+                return JSONResponse({
+                    "success": True,
+                    "session_id": session_id,
+                    "entries_saved": persist_info.get("saved"),
+                    "batch_id": persist_info.get("batch_id"),
+                    "db_enabled": persist_info.get("enabled", False),
+                    "source": "db",
+                    "used_ranked_file": ranked_used,
+                })
             except Exception as e:
-                print(f"[ranking] Reconnect: ranking failed; sending unranked. Error: {e}", flush=True)
+                print(f"[ranking] Reconnect: ranking failed; falling back to unranked. Error: {e}", flush=True)
                 try:
                     with open(mf_path, "r", encoding="utf-8") as f:
-                        mf_json = json.load(f)
-                    def _notify_sent_reconnect_unranked():
-                        print("[ranking] Reconnect: unranked megafile JSON sent.", flush=True)
-                    return JSONResponse(content=mf_json, background=BackgroundTask(_notify_sent_reconnect_unranked))
+                        doc = json.load(f)
+                    persist_info = persist_ranked_entries(
+                        doc,
+                        user_id=user_id,
+                        keyword=keyword,
+                        session_id=session_id,
+                    )
+                    print(f"[db] Run /run-stream persist summary: {persist_info}", flush=True)
+                    return JSONResponse({
+                        "success": True,
+                        "session_id": session_id,
+                        "entries_saved": persist_info.get("saved"),
+                        "batch_id": persist_info.get("batch_id"),
+                        "db_enabled": persist_info.get("enabled", False),
+                        "source": "db",
+                        "used_ranked_file": False,
+                        "warning": "Ranking failed; stored unranked snapshot",
+                    })
                 except Exception as e2:
                     return JSONResponse(
                         content={"error": f"Failed to load megafile: {str(e2)}", "path": mf_path},
@@ -1988,9 +2596,8 @@ def run_stream(payload: RunRequest):
             with sem:
                 res = orchestrate_run(user_id, keyword, payload.desired_total, progress_cb=emit)
             # Attach full megafile JSON to the completion event
-            megafile_json = None
             megafile_path = None
-            used_ranked = False
+            persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings())}
             try:
                 mp = (res.get("meta") or {}).get("megafile_path")
                 if mp:
@@ -2000,24 +2607,36 @@ def run_stream(payload: RunRequest):
                     ranked_path = rnk.rank_megafile(str(mp))
                     print(f"[ranking] Run: ranked megafile created: {ranked_path}", flush=True)
                     with open(ranked_path, "r", encoding="utf-8") as f:
-                        megafile_json = json.load(f)
-                    used_ranked = True
+                        doc = json.load(f)
+                    persist_info = persist_ranked_entries(
+                        doc,
+                        user_id=user_id,
+                        keyword=keyword,
+                        session_id=session_id,
+                    )
                     try:
                         update_session_meta_file(user_id, session_id, last_ranked_megafile_path=str(ranked_path))
                     except Exception as meta_err:
                         print(f"[run_stream] Failed to update session meta (ranked): {meta_err}", flush=True)
                 else:
-                    megafile_json = None
+                    persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings())}
             except Exception as e:
                 print(f"[ranking] Run: ranking failed; sending unranked. Error: {e}", flush=True)
                 try:
                     if megafile_path:
                         with open(megafile_path, "r", encoding="utf-8") as f:
-                            megafile_json = json.load(f)
+                            doc = json.load(f)
+                        persist_info = persist_ranked_entries(
+                            doc,
+                            user_id=user_id,
+                            keyword=keyword,
+                            session_id=session_id,
+                        )
+                        print(f"[db] Run /run-stream persist summary (fallback): {persist_info}", flush=True)
                     else:
-                        megafile_json = {"error": f"Failed to locate megafile: {str(e)}"}
+                        persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings()), "error": "megafile missing"}
                 except Exception as e2:
-                    megafile_json = {"error": f"Failed to load megafile: {str(e2)}"}
+                    persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings()), "error": f"Failed to load megafile: {str(e2)}"}
 
             _session_update_meta(
                 key,
@@ -2026,11 +2645,16 @@ def run_stream(payload: RunRequest):
                 megafile_path=megafile_path,
                 run_root_dir=(res.get("meta") or {}).get("run_root_dir"),
             )
-            if used_ranked:
-                print("[ranking] Run: sending ranked megafile JSON in completion event.", flush=True)
-            else:
-                print("[ranking] Run: sending unranked megafile JSON in completion event.", flush=True)
-            emit({"type": "complete", "success": res.get("success"), "result": res, "megafile": megafile_json})
+            emit({
+                "type": "complete",
+                "success": res.get("success"),
+                "result": res,
+                "entries_saved": persist_info.get("saved"),
+                "batch_id": persist_info.get("batch_id"),
+                "source": "db",
+                "db_enabled": persist_info.get("enabled", False),
+                "persist_error": persist_info.get("error"),
+            })
         except Exception as e:
             _session_update_meta(key, status="error", ended_at=time.time())
             emit({"type": "error", "error": str(e)})
@@ -2166,6 +2790,7 @@ def run(payload: RunRequest) -> Dict:
 
         # On 100% success, return the full megafile JSON content
         if isinstance(result, dict) and result.get("success") is True:
+            persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings())}
             try:
                 import json
                 import ranking as rnk
@@ -2177,26 +2802,52 @@ def run(payload: RunRequest) -> Dict:
                 print(f"[ranking] Run: ranked megafile created: {ranked_path}", flush=True)
                 with open(ranked_path, "r", encoding="utf-8") as f:
                     doc = json.load(f)
-                entries = doc.get("entries") or []
-                meta = doc.get("meta") or {}
-                if "processed_total" not in meta:
-                    meta["processed_total"] = len([e for e in entries if e.get("demand_value") not in (None, "", False)])
-                if "popular_count" not in meta:
-                    meta["popular_count"] = len(entries)
-                doc["meta"] = meta
+                persist_info = persist_ranked_entries(
+                    doc,
+                    user_id=payload.user_id.strip(),
+                    keyword=payload.keyword.strip(),
+                    session_id=payload.session_id.strip(),
+                )
+                print(f"[db] Run /run persist summary: {persist_info}", flush=True)
                 try:
                     # session_id is part of RunRequest
                     update_session_meta_file(payload.user_id.strip(), payload.session_id.strip(), last_ranked_megafile_path=str(ranked_path))
                 except Exception as meta_err:
                     print(f"[run] Failed to update session meta (ranked): {meta_err}", flush=True)
-                print("[ranking] Run: sending ranked megafile JSON.", flush=True)
-                return doc
+                print("[ranking] Run: ranked megafile stored in DB.", flush=True)
+                return {
+                    "success": True,
+                    "session_id": payload.session_id.strip(),
+                    "keyword": payload.keyword.strip(),
+                    "entries_saved": persist_info.get("saved"),
+                    "batch_id": persist_info.get("batch_id"),
+                    "db_enabled": persist_info.get("enabled", False),
+                    "source": "db",
+                    "message": "Ranked entries persisted to PostgreSQL",
+                }
             except Exception as e:
                 print(f"[ranking] Run: ranking failed; sending unranked. Error: {e}", flush=True)
                 try:
                     with open(megafile_path, "r", encoding="utf-8") as f:
                         doc = json.load(f)
-                    return doc
+                    persist_info = persist_ranked_entries(
+                        doc,
+                        user_id=payload.user_id.strip(),
+                        keyword=payload.keyword.strip(),
+                        session_id=payload.session_id.strip(),
+                    )
+                    print(f"[db] Run /run persist summary (fallback): {persist_info}", flush=True)
+                    return {
+                        "success": True,
+                        "session_id": payload.session_id.strip(),
+                        "keyword": payload.keyword.strip(),
+                        "entries_saved": persist_info.get("saved"),
+                        "batch_id": persist_info.get("batch_id"),
+                        "db_enabled": persist_info.get("enabled", False),
+                        "source": "db",
+                        "message": "Ranked entries stored using unranked fallback file",
+                        "warning": "Ranking failed; data saved from unranked megafile",
+                    }
                 except Exception as e2:
                     return {"success": False, "error": f"Failed to load megafile: {e2}"}
 
