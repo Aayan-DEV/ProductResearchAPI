@@ -6,7 +6,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple, Any
+from typing import Optional, Dict, List, Tuple, Any, Callable
 import requests
 from dotenv import load_dotenv
 from contextlib import asynccontextmanager
@@ -51,6 +51,7 @@ download_lock = threading.Lock()
 
 DB_TABLE_ENTRIES = "ranked_entries"
 DB_TABLE_BATCHES = "ranked_batches"
+DB_TABLE_REVIEWS = "ranked_entry_reviews"
 
 
 def _db_settings() -> Optional[Dict[str, str]]:
@@ -113,6 +114,31 @@ def _ensure_db_tables(conn) -> None:
         )
         cur.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_ENTRIES}_keyword ON {DB_TABLE_ENTRIES} (keyword_slug)"
+        )
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {DB_TABLE_REVIEWS} (
+                session_id TEXT NOT NULL,
+                listing_id BIGINT NOT NULL,
+                review_key TEXT NOT NULL,
+                buyer_user_id TEXT,
+                rating DOUBLE PRECISION,
+                review TEXT,
+                created_timestamp BIGINT,
+                updated_timestamp BIGINT,
+                language TEXT,
+                image_url_fullxfull TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (session_id, listing_id, review_key)
+            )
+            """
+        )
+        cur.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_REVIEWS}_listing ON {DB_TABLE_REVIEWS} (listing_id)"
+        )
+        cur.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_REVIEWS}_session ON {DB_TABLE_REVIEWS} (session_id)"
         )
         conn.commit()
 
@@ -292,10 +318,17 @@ def _simplify_ranked_entry(entry: Dict[str, Any]) -> Tuple[Optional[int], Dict[s
     title = entry.get("title") or popular.get("title") or ""
     url = entry.get("url") or popular.get("url") or ""
 
-    demand = entry.get("demand_value")
-    if demand is None:
-        demand = popular.get("demand")
-    demand = _safe_float(demand)
+    demand_candidates = [
+        entry.get("demand"),
+        entry.get("demand_value"),
+        popular.get("demand"),
+        popular.get("demand_value"),
+    ]
+    demand = None
+    for cand in demand_candidates:
+        demand = _safe_float(cand)
+        if demand is not None:
+            break
 
     ranking_candidates = [
         entry.get("ranking"),
@@ -493,7 +526,7 @@ def _simplify_ranked_entry(entry: Dict[str, Any]) -> Tuple[Optional[int], Dict[s
     return listing_id, payload, summary
 
 
-def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, session_id: str) -> Dict[str, Any]:
+def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, session_id: str, persist_reviews: bool = False) -> Dict[str, Any]:
     cfg = _db_settings()
     if not cfg:
         print("[db] Skipping persistence: database env vars not configured.", flush=True)
@@ -507,6 +540,7 @@ def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, s
     slug = slugify_safe(keyword)
     batch_id = f"{slug}-{session_id}-{int(time.time())}"
     normalized_rows = []
+    reviews_rows = []
     for entry in entries:
         listing_id, payload, summary = _simplify_ranked_entry(entry)
         if listing_id is None or not payload:
@@ -528,6 +562,29 @@ def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, s
                 json.dumps(payload, ensure_ascii=False),
             )
         )
+        if persist_reviews:
+            for rv in entry.get("reviews") or []:
+                review_key = (
+                    rv.get("transaction_id")
+                    or rv.get("review_id")
+                    or rv.get("id")
+                    or f"{rv.get('buyer_user_id') or 'anon'}-{rv.get('created_timestamp') or rv.get('updated_timestamp') or ''}-{listing_id}"
+                )
+                review_key = str(review_key)
+                reviews_rows.append(
+                    (
+                        session_id,
+                        listing_id,
+                        review_key,
+                        rv.get("buyer_user_id"),
+                        rv.get("rating"),
+                        rv.get("review"),
+                        rv.get("created_timestamp"),
+                        rv.get("updated_timestamp"),
+                        rv.get("language"),
+                        rv.get("image_url_fullxfull"),
+                    )
+                )
 
     if not normalized_rows:
         print(f"[db] Entries payload normalized to 0 rows for session={session_id}; nothing written.", flush=True)
@@ -582,12 +639,134 @@ def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, s
                 """,
                 normalized_rows,
             )
+            if persist_reviews and reviews_rows:
+                cur.executemany(
+                    f"""
+                    INSERT INTO {DB_TABLE_REVIEWS} (
+                        session_id,
+                        listing_id,
+                        review_key,
+                        buyer_user_id,
+                        rating,
+                        review,
+                        created_timestamp,
+                        updated_timestamp,
+                        language,
+                        image_url_fullxfull
+                    )
+                    VALUES (
+                        %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s
+                    )
+                    ON CONFLICT (session_id, listing_id, review_key) DO UPDATE SET
+                        buyer_user_id = EXCLUDED.buyer_user_id,
+                        rating = EXCLUDED.rating,
+                        review = EXCLUDED.review,
+                        updated_timestamp = EXCLUDED.updated_timestamp,
+                        language = EXCLUDED.language,
+                        image_url_fullxfull = EXCLUDED.image_url_fullxfull
+                    """,
+                    reviews_rows,
+                )
+            live_batch_id = f"{slug}-{session_id}-live"
+            cur.execute(
+                f"DELETE FROM {DB_TABLE_BATCHES} WHERE batch_id = %s",
+                (live_batch_id,),
+            )
         conn.commit()
         print(f"[db] Stored {len(normalized_rows)} ranked entries in batch {batch_id}.", flush=True)
         return {"saved": len(normalized_rows), "batch_id": batch_id, "enabled": True}
     except Exception as exc:
         conn.rollback()
         print(f"[db] Failed to store ranked entries: {exc}", flush=True)
+        return {"saved": 0, "batch_id": None, "enabled": True, "error": str(exc)}
+    finally:
+        conn.close()
+
+def persist_entry_live(entry: Dict[str, Any], *, user_id: str, keyword: str, session_id: str, processed_count: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Persist a single megafile entry as soon as it is fully enriched.
+    This enables realtime UI updates while ranking is still pending.
+    """
+    cfg = _db_settings()
+    if not cfg:
+        return {"saved": 0, "batch_id": None, "enabled": False}
+
+    listing_id, payload, summary = _simplify_ranked_entry(entry)
+    if listing_id is None or not payload:
+        return {"saved": 0, "batch_id": None, "enabled": True}
+
+    slug = slugify_safe(keyword)
+    batch_id = f"{slug}-{session_id}-live"
+    conn = _db_connect()
+    if conn is None:
+        print("[db] Unable to connect to PostgreSQL for live entry persist.", flush=True)
+        return {"saved": 0, "batch_id": None, "enabled": False}
+
+    try:
+        _ensure_db_tables(conn)
+        entries_count = processed_count if isinstance(processed_count, int) and processed_count >= 0 else 0
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                INSERT INTO {DB_TABLE_BATCHES} (batch_id, user_id, session_id, keyword, keyword_slug, entries_count)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (batch_id) DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    keyword = EXCLUDED.keyword,
+                    keyword_slug = EXCLUDED.keyword_slug,
+                    entries_count = EXCLUDED.entries_count,
+                    stored_at = NOW()
+                """,
+                (batch_id, user_id, session_id, keyword, slug, entries_count),
+            )
+            cur.execute(
+                f"""
+                INSERT INTO {DB_TABLE_ENTRIES} (
+                    batch_id, session_id, user_id, keyword, keyword_slug,
+                    listing_id, ranking, demand, price_value, sale_price_value,
+                    review_count, review_average, payload
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s
+                )
+                ON CONFLICT (session_id, listing_id) DO UPDATE SET
+                    batch_id = EXCLUDED.batch_id,
+                    ranking = EXCLUDED.ranking,
+                    demand = EXCLUDED.demand,
+                    price_value = EXCLUDED.price_value,
+                    sale_price_value = EXCLUDED.sale_price_value,
+                    review_count = EXCLUDED.review_count,
+                    review_average = EXCLUDED.review_average,
+                    payload = EXCLUDED.payload,
+                    keyword = EXCLUDED.keyword,
+                    keyword_slug = EXCLUDED.keyword_slug,
+                    user_id = EXCLUDED.user_id,
+                    updated_at = NOW()
+                """,
+                (
+                    batch_id,
+                    session_id,
+                    user_id,
+                    keyword,
+                    slug,
+                    listing_id,
+                    summary.get("ranking"),
+                    summary.get("demand"),
+                    summary.get("price_value"),
+                    summary.get("sale_price_value"),
+                    summary.get("review_count"),
+                    summary.get("review_average"),
+                    json.dumps(payload, ensure_ascii=False),
+                ),
+            )
+        conn.commit()
+        return {"saved": 1, "batch_id": batch_id, "enabled": True}
+    except Exception as exc:
+        conn.rollback()
+        print(f"[db] Live persist failed for listing_id={listing_id}: {exc}", flush=True)
         return {"saved": 0, "batch_id": None, "enabled": True, "error": str(exc)}
     finally:
         conn.close()
@@ -813,6 +992,28 @@ def _write_json_atomic(path: Path, obj: Dict[str, any]) -> None:
         json.dump(obj, f, ensure_ascii=False, indent=2)
     tmp.replace(path)
 
+def _canonical_megafile_for_write(path: Path) -> Path:
+    """
+    When replace-listing is triggered after previous rankings, the session meta
+    might point at a *_ranked.json file. We need to mutate the base megafile
+    (non-ranked) so that future rankings do not create cascading
+    *_ranked_ranked.json files. Strip repeated `_ranked` suffixes if the base
+    file exists; otherwise fall back to the provided path.
+    """
+    try:
+        suffix = path.suffix
+        stem = path.stem
+        original_stem = stem
+        while stem.endswith("_ranked"):
+            stem = stem[: -len("_ranked")]
+        if stem != original_stem:
+            candidate = path.with_name(f"{stem}{suffix}")
+            if candidate.exists():
+                return candidate
+        return path
+    except Exception:
+        return path
+
 @app.post("/replace-listing")
 async def api_replace_listing(payload: ReplaceListingRequest):
     """
@@ -857,7 +1058,7 @@ async def api_replace_listing(payload: ReplaceListingRequest):
                 },
                 status_code=404,
             )
-        mf_path = Path(mf_path_str)
+        mf_path = _canonical_megafile_for_write(Path(mf_path_str))
 
         # Load and update entries, preserving source_paths; concurrency-safe write
         try:
@@ -926,6 +1127,7 @@ async def api_replace_listing(payload: ReplaceListingRequest):
                 user_id=payload.user_id,
                 keyword=keyword_hint,
                 session_id=payload.session_id,
+                persist_reviews=True,
             )
             print("[ranking] Stored ranked megafile JSON in database (replace-listing).", flush=True)
             return JSONResponse({
@@ -943,6 +1145,7 @@ async def api_replace_listing(payload: ReplaceListingRequest):
                 user_id=payload.user_id,
                 keyword=_resolve_keyword_for_session(payload.user_id, payload.session_id) or payload.session_id,
                 session_id=payload.session_id,
+                persist_reviews=True,
             )
             return JSONResponse({
                 "status": "ok",
@@ -1029,6 +1232,7 @@ def reconnect_stream(payload: ReconnectRequest):
                     user_id=user_id,
                     keyword=keyword,
                     session_id=session_id,
+                    persist_reviews=True,
                 )
                 print(f"[ranking] Reconnect: stored ranked megafile (entries={persist_info.get('saved')}).", flush=True)
                 return JSONResponse({
@@ -1050,6 +1254,7 @@ def reconnect_stream(payload: ReconnectRequest):
                         user_id=user_id,
                         keyword=keyword,
                         session_id=session_id,
+                        persist_reviews=True,
                     )
                     print(f"[db] Run /run-stream persist summary: {persist_info}", flush=True)
                     return JSONResponse({
@@ -1549,23 +1754,44 @@ def start_queue_consumer_thread(queue_path: str, run_root_dir: str, outputs_dir:
     t.start()
     return t
 
-def start_artifact_processor_thread(queue_path: str, run_root_dir: str, outputs_dir: str, listing_ids: List[int], slug: str) -> "threading.Thread":
+def start_artifact_processor_thread(
+    queue_path: str,
+    run_root_dir: str,
+    outputs_dir: str,
+    listing_ids: List[int],
+    slug: str,
+    user_id: Optional[str] = None,
+    keyword: Optional[str] = None,
+    session_id: Optional[str] = None,
+    entry_progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> "threading.Thread":
     """
     Stream-processor to merge demand artifacts into a megafile, now reading AI/Everbee
     outputs produced in parallel. Runs as a background thread and updates
-    outputs/megafile_listings_{slug}.json in near realtime.
+    outputs/megafile_listings_{slug}.json in near realtime while optionally
+    persisting finished entries to the database and emitting entry callbacks.
     """
     import threading
     t = threading.Thread(
         target=process_listing_artifacts_stream,
-        args=(queue_path, run_root_dir, outputs_dir, listing_ids, slug),
+        args=(queue_path, run_root_dir, outputs_dir, listing_ids, slug, user_id, keyword, session_id, entry_progress_cb),
         daemon=True,
         name=f"artifact-processor-{Path(run_root_dir).name}",
     )
     t.start()
     return t
 
-def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs_dir: str, listing_ids: List[int], slug: str) -> None:
+def process_listing_artifacts_stream(
+    queue_path: str,
+    run_root_dir: str,
+    outputs_dir: str,
+    listing_ids: List[int],
+    slug: str,
+    user_id: Optional[str] = None,
+    keyword: Optional[str] = None,
+    session_id: Optional[str] = None,
+    entry_progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> None:
     """
     Merge new demand artifacts with concurrently produced AI keywords and Everbee metrics.
     For each new combined_demand_and_product.json:
@@ -1639,6 +1865,9 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
         except Exception:
             return {}
 
+    pending_aux: set[int] = set()
+    expected_ids = set(int(x) for x in listing_ids) if listing_ids else None
+    target_total = len(expected_ids) if expected_ids else None
     # Loop until queue is completed and all listing_ids processed
     while True:
         found_new = False
@@ -1660,7 +1889,7 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
                 li = int(lid)
             except Exception:
                 continue
-            if listing_ids and li not in set(listing_ids):
+            if expected_ids is not None and li not in expected_ids:
                 continue
             if li in processed:
                 continue
@@ -1719,13 +1948,39 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
                 except Exception:
                     extras = None
 
+            # Determine demand (skip entries with no demand)
+            demand_value = obj.get("signals", {}).get("demand_value")
+            if demand_value is None:
+                demand_value = pop.get("demand") or pop.get("demand_value")
+
+            keywords_ready = isinstance(keywords, list) and len(keywords) > 0
+            everbee_ready = isinstance(everbee_results, list) and len(everbee_results) > 0
+
+            if demand_value is None:
+                processed.add(li)
+                pending_aux.discard(li)
+                print(f"[ArtifactProcessor] listing_id={li} skipped (demand missing).", flush=True)
+                continue
+
+            if not keywords_ready or not everbee_ready:
+                pending_aux.add(li)
+                continue
+
+            shop_data = pop.get("shop")
+            if not isinstance(shop_data, dict):
+                shop_data = {}
+            raw_reviews = shop_data.get("reviews")
+            if not isinstance(raw_reviews, list):
+                raw_reviews = []
+            filtered_reviews = [rv for rv in raw_reviews if isinstance(rv, dict)]
+
             # Build entry
             entry = {
                 "listing_id": li,
                 "title": title,
                 "popular_info": pop,
                 "signals": obj.get("signals"),
-                "demand_value": obj.get("signals", {}).get("demand_value"),
+                "demand_value": demand_value,
                 "keywords": keywords,
                 "everbee": {
                     "results": everbee_results
@@ -1734,6 +1989,8 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
                 "variations_cleaned": vclean,
                 "sale_info": sale_info,
                 "demand_extras": extras,
+                "shop": shop_data,
+                "reviews": filtered_reviews,
                 "source_paths": {
                     "combined": str(p),
                     "primary_image": str(img_path) if primary_image else None,
@@ -1759,13 +2016,38 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
             write_json_file(str(megafile_path), mega)
 
             processed.add(li)
+            pending_aux.discard(li)
+            processed_count = len(processed)
+
+            # Emit progress (no DB saving here - will be done in batch after ranking)
+            if entry_progress_cb:
+                try:
+                    entry_progress_cb({
+                        "listing_id": li,
+                        "title": title,
+                        "demand": entry.get("demand_value"),
+                        "keywords_count": len(keywords),
+                        "everbee_count": len(everbee_results),
+                        "processed": processed_count,
+                        "total": len(listing_ids) if listing_ids else None,
+                        "megafile_path": str(megafile_path),
+                        "db_status": "pending",
+                        "db_entry_saved": False,
+                        "timestamp": entry.get("timestamp"),
+                    })
+                except Exception as cb_err:
+                    print(f"[ArtifactProcessor] WARN entry callback failed: {cb_err}", flush=True)
+
             found_new = True
             print(f"[ArtifactProcessor] listing_id={li} merged into megafile (keywords={len(keywords)}, everbee={len(everbee_results)})")
 
+        waiting_for_aux = len(pending_aux) > 0
+
         # Exit conditions
-        all_done = listing_ids and len(processed) >= len(listing_ids)
+        all_done = expected_ids is not None and processed.issuperset(expected_ids)
         if all_done:
-            print(f"[ArtifactProcessor] Completed. processed={len(processed)} of {len(listing_ids)}.")
+            goal = target_total if target_total is not None else len(processed)
+            print(f"[ArtifactProcessor] Completed. processed={len(processed)} of {goal}.")
             break
 
         # Secondary exit: queue finished and nothing new surfaced
@@ -1777,9 +2059,11 @@ def process_listing_artifacts_stream(queue_path: str, run_root_dir: str, outputs
         except Exception:
             queue_completed = not os.path.exists(queue_path)
 
-        if queue_completed and not found_new:
-            print(f"[ArtifactProcessor] Completed (queue finalized). processed={len(processed)} of {len(listing_ids)}.")
-            break
+        if queue_completed and not found_new and not waiting_for_aux:
+            if expected_ids is None or processed.issuperset(expected_ids):
+                goal = target_total if target_total is not None else len(processed)
+                print(f"[ArtifactProcessor] Completed (queue finalized). processed={len(processed)} of {goal}.")
+                break
 
         time.sleep(1)
 
@@ -2189,7 +2473,15 @@ def build_megafile_from_outputs(outputs_dir: str, second_step_summary_path: str,
 
 # ---------- Core Orchestration ----------
 
-def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = None, progress_cb: Optional[callable] = None) -> Dict:
+def orchestrate_run(
+    user_id: str,
+    keyword: str,
+    desired_total: Optional[int] = None,
+    progress_cb: Optional[Callable[[Dict], None]] = None,
+    *,
+    session_id: Optional[str] = None,
+    entry_progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
+) -> Dict:
     """
     Orchestrate the full pipeline with precise scoping:
     - Etsy v3 aggregated search
@@ -2264,6 +2556,7 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
     )
     popular_ids_dedup = list(dict.fromkeys(result.get("popular_now_ids") or []))
     total_popular = len(popular_ids_dedup)
+    target_listing_ids = popular_ids_dedup[:]
 
     # NEW: ensure downstream stages run; fallback when no popular IDs
     strict_pop = str(os.getenv("STRICT_POPULAR_ONLY", "0")).lower() in ("1", "true", "yes")
@@ -2290,6 +2583,7 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
             except Exception as e:
                 print(f"[Run] WARN: fallback queue append failed: {e}")
             total_popular = len(fallback_ids)
+            target_listing_ids = fallback_ids[:]
             try:
                 if progress_cb:
                     progress_cb({
@@ -2316,8 +2610,15 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
         progress_cb=progress_cb,
     )
     artifact_t = start_artifact_processor_thread(
-        popular_queue_path, run_root_dir, outputs_dir,
-        listing_ids, slug,
+        popular_queue_path,
+        run_root_dir,
+        outputs_dir,
+        target_listing_ids or listing_ids,
+        slug,
+        user_id=user_id,
+        keyword=keyword,
+        session_id=session_id,
+        entry_progress_cb=entry_progress_cb,
     )
 
     # Finalize queue so consumer exits when done
@@ -2365,6 +2666,87 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
     # Megafile consolidated from summary + AI + Everbee
     megafile_path = build_megafile_from_outputs(outputs_dir, second_step_summary_path, slug)
 
+    # Rank the megafile before completion
+    ranked_path = None
+    try:
+        if progress_cb:
+            progress_cb({
+                "stage": "ranking",
+                "user_id": user_id,
+                "remaining": 0,
+                "total": total_popular,
+                "message": "Ranking products...",
+            })
+        import ranking as rnk
+        print("[Run] Ranking megafile before completion...", flush=True)
+        ranked_path = rnk.rank_megafile(megafile_path)
+        print(f"[Run] Ranked megafile created: {ranked_path}", flush=True)
+    except Exception as rank_err:
+        print(f"[Run] Ranking failed: {rank_err}", flush=True)
+        ranked_path = megafile_path
+
+    # Enrich all entries with listing details before saving
+    try:
+        if progress_cb:
+            progress_cb({
+                "stage": "enriching",
+                "user_id": user_id,
+                "remaining": 0,
+                "total": total_popular,
+                "message": "Fetching product details...",
+            })
+        with open(ranked_path, "r", encoding="utf-8") as f:
+            ranked_doc = json.load(f)
+        
+        entries = ranked_doc.get("entries") or []
+        print(f"[Run] Enriching {len(entries)} entries with listing details...", flush=True)
+        
+        for entry in entries:
+            listing_id = entry.get("listing_id")
+            if listing_id:
+                try:
+                    # Fetch and attach listing details
+                    snapshot = etsy.collect_listing_detail_and_reviews(listing_id, reviews_limit=100)
+                    detail = snapshot.get("detail")
+                    if detail is not None:
+                        entry["listing_details"] = detail
+                    reviews = snapshot.get("reviews")
+                    if reviews is not None:
+                        entry["listing_reviews"] = reviews
+                except Exception as enrich_err:
+                    print(f"[Run] Failed to enrich listing_id={listing_id}: {enrich_err}", flush=True)
+        
+        # Save enriched megafile
+        write_json_file(ranked_path, ranked_doc)
+        print(f"[Run] Enriched megafile saved to {ranked_path}", flush=True)
+    except Exception as enrich_err:
+        print(f"[Run] Failed to enrich entries: {enrich_err}", flush=True)
+
+    # Save all entries to database in batch (only after ranking and enrichment)
+    persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings())}
+    if ranked_path:
+        try:
+            if progress_cb:
+                progress_cb({
+                    "stage": "saving",
+                    "user_id": user_id,
+                    "remaining": 0,
+                    "total": total_popular,
+                    "message": "Saving to database...",
+                })
+            with open(ranked_path, "r", encoding="utf-8") as f:
+                final_doc = json.load(f)
+            persist_info = persist_ranked_entries(
+                final_doc,
+                user_id=user_id,
+                keyword=keyword,
+                session_id=session_id,
+                persist_reviews=True,
+            )
+            print(f"[Run] Saved {persist_info.get('saved', 0)} entries to database after ranking.", flush=True)
+        except Exception as persist_err:
+            print(f"[Run] Failed to persist entries: {persist_err}", flush=True)
+
     # Emit completion event with megafile path
     try:
         if progress_cb:
@@ -2374,7 +2756,9 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
                 "remaining": 0,
                 "total": total_popular,
                 "message": "Run complete",
-                "megafile_path": megafile_path,
+                "megafile_path": ranked_path or megafile_path,
+                "entries_saved": persist_info.get("saved", 0),
+                "batch_id": persist_info.get("batch_id"),
             })
     except Exception:
         pass
@@ -2407,10 +2791,11 @@ def orchestrate_run(user_id: str, keyword: str, desired_total: Optional[int] = N
             f"{len(etsy.chunk_list(listing_ids, etsy.CURL_CHUNK_SIZE))} parts."
         ),
         "meta": {
-            "megafile_path": megafile_path,
+            "megafile_path": ranked_path or megafile_path,
             "run_root_dir": run_root_dir,
             "keyword_slug": slug,
         },
+        "persist_info": persist_info,
     }
 
 def start_keywords_and_everbee_thread(popular_listings_path: str, outputs_dir: str, slug: str, queue_path: Optional[str] = None, progress_cb: Optional[callable] = None, total_target: int = 0, user_id: Optional[str] = None) -> "threading.Thread":
@@ -2709,52 +3094,43 @@ def run_stream(payload: RunRequest):
         except Exception:
             pass
 
+    def entry_progress(info: Dict[str, Any]):
+        try:
+            payload = dict(info or {})
+            payload.setdefault("type", "entry_progress")
+            status = payload.get("db_status")
+            if status == "db_saved":
+                payload.setdefault("message", f"Listing {payload.get('listing_id')} saved to database.")
+                payload.setdefault("db_entry_saved", True)
+                payload.setdefault("db_saved_increment", payload.get("db_saved_increment") or 1)
+            elif status == "db_error":
+                payload.setdefault("message", f"Listing {payload.get('listing_id')} failed to save: {payload.get('db_error')}")
+            elif status == "db_disabled":
+                payload.setdefault("message", f"Listing {payload.get('listing_id')} ready (DB disabled).")
+            emit(payload)
+        except Exception:
+            pass
+
     def worker():
         try:
             with sem:
-                res = orchestrate_run(user_id, keyword, payload.desired_total)
-            # Attach full megafile JSON to the completion event
-            megafile_path = None
-            persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings())}
-            try:
-                mp = (res.get("meta") or {}).get("megafile_path")
-                if mp:
-                    megafile_path = mp
-                    import ranking as rnk
-                    print("[ranking] Run: ranking megafile before completion event...", flush=True)
-                    ranked_path = rnk.rank_megafile(str(mp))
-                    print(f"[ranking] Run: ranked megafile created: {ranked_path}", flush=True)
-                    with open(ranked_path, "r", encoding="utf-8") as f:
-                        doc = json.load(f)
-                    persist_info = persist_ranked_entries(
-                        doc,
-                        user_id=user_id,
-                        keyword=keyword,
-                        session_id=session_id,
-                    )
-                    try:
-                        update_session_meta_file(user_id, session_id, last_ranked_megafile_path=str(ranked_path))
-                    except Exception as meta_err:
-                        print(f"[run_stream] Failed to update session meta (ranked): {meta_err}", flush=True)
-                else:
-                    persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings())}
-            except Exception as e:
-                print(f"[ranking] Run: ranking failed; sending unranked. Error: {e}", flush=True)
+                res = orchestrate_run(
+                    user_id,
+                    keyword,
+                    payload.desired_total,
+                    progress_cb=emit,
+                    session_id=session_id,
+                    entry_progress_cb=entry_progress,
+                )
+            # Get persist info from orchestrate_run result (already saved after ranking)
+            megafile_path = (res.get("meta") or {}).get("megafile_path")
+            persist_info = res.get("persist_info") or {"saved": 0, "batch_id": None, "enabled": bool(_db_settings())}
+            
+            if megafile_path:
                 try:
-                    if megafile_path:
-                        with open(megafile_path, "r", encoding="utf-8") as f:
-                            doc = json.load(f)
-                        persist_info = persist_ranked_entries(
-                            doc,
-                            user_id=user_id,
-                            keyword=keyword,
-                            session_id=session_id,
-                        )
-                        print(f"[db] Run /run-stream persist summary (fallback): {persist_info}", flush=True)
-                    else:
-                        persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings()), "error": "megafile missing"}
-                except Exception as e2:
-                    persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings()), "error": f"Failed to load megafile: {str(e2)}"}
+                    update_session_meta_file(user_id, session_id, last_ranked_megafile_path=str(megafile_path))
+                except Exception as meta_err:
+                    print(f"[run_stream] Failed to update session meta: {meta_err}", flush=True)
 
             _session_update_meta(
                 key,
@@ -2874,6 +3250,7 @@ def enqueue(payload: RunRequest) -> Dict:
         "user_id": payload.user_id.strip(),
         "keyword": payload.keyword.strip(),
         "desired_total": payload.desired_total,
+        "session_id": payload.session_id.strip(),
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "started_at": None,
         "finished_at": None,
@@ -2890,6 +3267,7 @@ def enqueue(payload: RunRequest) -> Dict:
                     jobs[job_id]["user_id"],
                     jobs[job_id]["keyword"],
                     jobs[job_id]["desired_total"],
+                    session_id=jobs[job_id].get("session_id"),
                 )
             jobs[job_id]["result"] = res
             jobs[job_id]["status"] = "completed" if (isinstance(res, dict) and res.get("success")) else "failed"
@@ -2927,7 +3305,12 @@ def run(payload: RunRequest) -> Dict:
             globals()["_RUN_SEMAPHORE"] = sem
 
         with sem:
-            result = orchestrate_run(payload.user_id.strip(), payload.keyword.strip(), payload.desired_total)
+            result = orchestrate_run(
+                payload.user_id.strip(),
+                payload.keyword.strip(),
+                payload.desired_total,
+                session_id=payload.session_id.strip(),
+            )
 
         # On 100% success, return the full megafile JSON content
         if isinstance(result, dict) and result.get("success") is True:
@@ -2948,6 +3331,7 @@ def run(payload: RunRequest) -> Dict:
                     user_id=payload.user_id.strip(),
                     keyword=payload.keyword.strip(),
                     session_id=payload.session_id.strip(),
+                    persist_reviews=True,
                 )
                 print(f"[db] Run /run persist summary: {persist_info}", flush=True)
                 try:
@@ -2976,6 +3360,7 @@ def run(payload: RunRequest) -> Dict:
                         user_id=payload.user_id.strip(),
                         keyword=payload.keyword.strip(),
                         session_id=payload.session_id.strip(),
+                        persist_reviews=True,
                     )
                     print(f"[db] Run /run persist summary (fallback): {persist_info}", flush=True)
                     return {

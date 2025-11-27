@@ -300,48 +300,59 @@ def _to_megafile_entry(compiled: Dict[str, Any]) -> Dict[str, Any]:
 # Merge helper: updates values while preserving structure and primary image
 def _merge_entry_preserving_primary_image(prev_entry: Dict[str, Any], new_entry: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Merge new_entry values into prev_entry while preserving structure and
-    keeping primary_image, source_paths, and listing_id exactly as-is.
-    Only updates keys that already exist in prev_entry.
+    Merge new_entry into prev_entry while preserving the identifiers/
+    media paths needed by the UI. This ensures replace-listing updates
+    propagate to the megafile (and therefore Railway) without dropping data.
     """
     merged = dict(prev_entry)
-    # Preserve additional fields exactly: sale_info and keywords stay untouched
-    skip_keys = {"primary_image", "source_paths", "listing_id", "sale_info", "keywords"}
+    preserve_keys = {"primary_image", "source_paths", "listing_id"}
 
-    for key in list(merged.keys()):
-        if key in skip_keys:
+    def _has_value(value: Any) -> bool:
+        return value is not None
+
+    for key, value in new_entry.items():
+        if key in preserve_keys:
             continue
 
         if key == "everbee":
             prev_ev = merged.get("everbee")
-            new_ev = new_entry.get("everbee")
-            if isinstance(prev_ev, dict):
-                if isinstance(new_ev, dict) and "results" in new_ev:
-                    new_results = new_ev.get("results") or []
-                    # Only update if non-empty to avoid wiping previous results
-                    if isinstance(new_results, list) and len(new_results) > 0:
-                        prev_ev["results"] = new_results
-                merged["everbee"] = prev_ev
+            new_ev = value
+            if isinstance(new_ev, dict):
+                new_results = new_ev.get("results")
+                if isinstance(new_results, list) and len(new_results) > 0:
+                    merged["everbee"] = new_ev
+                elif prev_ev is not None:
+                    merged["everbee"] = prev_ev
+                else:
+                    merged["everbee"] = new_ev
             elif new_ev is not None:
                 merged["everbee"] = new_ev
             continue
 
-        if key in new_entry:
-            val = new_entry.get(key)
-            if val is not None:
-                merged[key] = val
+        if key == "keywords":
+            if isinstance(value, list) and len(value) > 0:
+                merged["keywords"] = value
+            elif "keywords" not in merged:
+                merged["keywords"] = value or []
+            continue
+
+        if key == "sale_info":
+            if value is not None:
+                merged["sale_info"] = value
+            elif "sale_info" not in merged:
+                merged["sale_info"] = None
+            continue
+
+        if _has_value(value) or key not in merged:
+            merged[key] = value
 
     # Canonicalize demand: always use 'demand'
     new_demand = new_entry.get("demand", new_entry.get("demand_value"))
-    if "demand" in merged:
-        if new_demand is not None:
-            merged["demand"] = new_demand
-    elif "demand_value" in merged:
-        merged["demand"] = new_demand if new_demand is not None else merged.get("demand_value")
-        try:
-            del merged["demand_value"]
-        except Exception:
-            pass
+    if new_demand is not None:
+        merged["demand"] = new_demand
+    elif "demand" not in merged and "demand_value" in merged:
+        merged["demand"] = merged.get("demand_value")
+    merged.pop("demand_value", None)
 
     if "timestamp" in new_entry:
         merged["timestamp"] = new_entry["timestamp"]

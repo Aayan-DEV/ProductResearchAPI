@@ -4,7 +4,7 @@ import re
 import sys
 import time
 import html
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Tuple, List, Optional, Any
 from unittest.signals import registerResult
 import requests
 from pathlib import Path
@@ -27,6 +27,21 @@ V3_PAGE_SIZE = 100
 CURL_CHUNK_SIZE = 20
 MAX_OFFSET = 12000
 HTTP_TIMEOUT = 60
+
+
+def _build_api_headers() -> Dict[str, str]:
+    """
+    Construct default headers for Etsy Open API requests, including OAuth bearer
+    token if present.
+    """
+    headers = {
+        "x-api-key": API_KEYSTRING,
+        "accept": "application/json",
+    }
+    oauth = os.getenv("ETSY_ACCESS_TOKEN") or os.getenv("ETSY_BEARER_TOKEN") or os.getenv("ETSY_OAUTH_TOKEN")
+    if oauth:
+        headers["authorization"] = f"Bearer {oauth}"
+    return headers
 
 # --- General helpers ---
 def ensure_output_dir(path: str) -> None:
@@ -413,6 +428,162 @@ def fetch_listing_primary_image(listing_id: int) -> Optional[Dict]:
         except Exception:
             return None
     return None
+
+
+def _build_api_headers() -> Dict[str, str]:
+    """
+    Build standard API headers with optional OAuth token.
+    """
+    headers = {
+        "x-api-key": API_KEYSTRING,
+        "accept": "application/json",
+    }
+    oauth = os.getenv("ETSY_ACCESS_TOKEN") or os.getenv("ETSY_BEARER_TOKEN") or os.getenv("ETSY_OAUTH_TOKEN")
+    if oauth:
+        headers["authorization"] = f"Bearer {oauth}"
+    return headers
+
+def fetch_listing_detail(listing_id: int) -> Dict[str, Any]:
+    """
+    Fetch the complete listing detail document for a single listing via the
+    Open API. Returns a metadata envelope with `data`, `status`, and `error`.
+    """
+    sid = int(str(listing_id))
+    headers = _build_api_headers()
+    url = f"{OPENAPI_BASE}/v3/application/listings/{sid}"
+    result: Dict[str, Any] = {
+        "listing_id": sid,
+        "status": None,
+        "data": None,
+        "error": None,
+    }
+    for attempt in range(5):
+        try:
+            resp = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
+            status = resp.status_code
+            result["status"] = status
+            try:
+                data = resp.json()
+            except Exception:
+                data = None
+            if status in (429,) or (500 <= status < 600):
+                backoff_sleep(attempt)
+                continue
+            if status >= 400:
+                result["error"] = {
+                    "status": status,
+                    "url": resp.url,
+                    "response": data,
+                }
+                return result
+            if isinstance(data, dict):
+                if isinstance(data.get("results"), list) and data["results"]:
+                    result["data"] = data["results"][0]
+                elif isinstance(data.get("data"), dict):
+                    result["data"] = data["data"]
+                else:
+                    result["data"] = data
+            else:
+                result["data"] = data
+            return result
+        except requests.RequestException as exc:
+            if attempt == 4:
+                result["error"] = {"status": None, "message": str(exc), "url": url}
+                return result
+            backoff_sleep(attempt)
+    result["error"] = result["error"] or {"status": None, "message": "exhausted retries", "url": url}
+    return result
+
+
+def fetch_listing_reviews(listing_id: int, limit: int = 100) -> Dict[str, Any]:
+    """
+    Fetch up to `limit` reviews for a listing using the Open API reviews
+    endpoint. Returns an envelope with `reviews`, `status`, and `error`.
+    Note: Etsy API may not have a direct listing reviews endpoint - this may need
+    to use shop reviews filtered by listing_id, or return empty if not available.
+    """
+    sid = int(str(listing_id))
+    headers = _build_api_headers()
+    # Try listing-specific reviews endpoint (may not exist in Etsy API)
+    url = f"{OPENAPI_BASE}/v3/application/listings/{sid}/reviews"
+    result: Dict[str, Any] = {
+        "listing_id": sid,
+        "status": None,
+        "reviews": [],
+        "error": None,
+    }
+    remaining = max(1, int(limit or 1))
+    offset = 0
+    while remaining > 0:
+        page_limit = min(remaining, 100)
+        for attempt in range(5):
+            try:
+                resp = requests.get(
+                    url,
+                    headers=headers,
+                    params={"limit": page_limit, "offset": offset},
+                    timeout=HTTP_TIMEOUT,
+                )
+                status = resp.status_code
+                result["status"] = status
+                try:
+                    data = resp.json()
+                except Exception:
+                    data = None
+                if status in (429,) or (500 <= status < 600):
+                    backoff_sleep(attempt)
+                    continue
+                if status >= 400:
+                    result["error"] = {
+                        "status": status,
+                        "url": resp.url,
+                        "response": data,
+                    }
+                    return result
+                items: List[Dict[str, Any]] = []
+                if isinstance(data, dict):
+                    if isinstance(data.get("results"), list):
+                        items = data["results"]
+                    elif isinstance(data.get("data"), list):
+                        items = data["data"]
+                if not isinstance(items, list):
+                    items = []
+                result["reviews"].extend(items)
+                fetched = len(items)
+                remaining -= fetched
+                offset += fetched
+                if fetched < page_limit:
+                    remaining = 0
+                break
+            except requests.RequestException as exc:
+                if attempt == 4:
+                    result["error"] = {"status": None, "message": str(exc), "url": url}
+                    return result
+                backoff_sleep(attempt)
+        else:
+            break
+        if page_limit == 0 or fetched == 0:
+            break
+    return result
+
+
+def collect_listing_detail_and_reviews(listing_id: int, reviews_limit: int = 100) -> Dict[str, Any]:
+    """
+    Convenience helper that fetches both listing details and reviews, returning
+    a merged snapshot suitable for downstream persistence.
+    """
+    detail_meta = fetch_listing_detail(listing_id)
+    reviews_meta = fetch_listing_reviews(listing_id, limit=reviews_limit)
+    snapshot: Dict[str, Any] = {
+        "listing_id": detail_meta.get("listing_id") or reviews_meta.get("listing_id") or int(str(listing_id)),
+        "detail": detail_meta.get("data"),
+        "detail_status": detail_meta.get("status"),
+        "detail_error": detail_meta.get("error"),
+        "reviews": reviews_meta.get("reviews"),
+        "reviews_status": reviews_meta.get("status"),
+        "reviews_error": reviews_meta.get("error"),
+    }
+    return snapshot
 
 def generate_listing_card_html(listing_id: int, title: Optional[str], page_url: Optional[str], image: Optional[Dict]) -> str:
     """

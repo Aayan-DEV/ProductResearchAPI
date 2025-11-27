@@ -24,13 +24,19 @@ def _age_in_years(ts: float, now: float) -> float:
 
 def _extract_demand(entry: Dict[str, Any]) -> float:
     pi = entry.get("popular_info") or {}
-    demand = pi.get("demand")
-    if demand is None:
-        demand = entry.get("demand_value")
-    try:
-        return float(demand) if demand is not None else 0.0
-    except Exception:
-        return 0.0
+    demand_candidates = [
+        entry.get("demand"),
+        entry.get("demand_value"),
+        pi.get("demand"),
+        pi.get("demand_value"),
+    ]
+    for cand in demand_candidates:
+        try:
+            if cand is not None:
+                return float(cand)
+        except Exception:
+            continue
+    return 0.0
 
 def _extract_shop_created_ts(entry: Dict[str, Any]) -> float:
     pi = entry.get("popular_info") or {}
