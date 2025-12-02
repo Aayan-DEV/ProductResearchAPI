@@ -52,6 +52,7 @@ download_lock = threading.Lock()
 DB_TABLE_ENTRIES = "ranked_entries"
 DB_TABLE_BATCHES = "ranked_batches"
 DB_TABLE_REVIEWS = "ranked_entry_reviews"
+DB_TABLE_SINGLE_SEARCHES = "single_searches"
 
 
 def _db_settings() -> Optional[Dict[str, str]]:
@@ -68,11 +69,21 @@ def _db_settings() -> Optional[Dict[str, str]]:
 def _db_connect():
     cfg = _db_settings()
     if not cfg:
+        print("[db] ⚠️ No database configuration found. Check DB_URL, DATABASE_URL, or RAILWAY_DATABASE_URL env vars.", flush=True)
         return None
-    return psycopg.connect(cfg["DB_DSN"])
+    try:
+        conn = psycopg.connect(cfg["DB_DSN"])
+        print(f"[db] ✅ Database connection established", flush=True)
+        return conn
+    except Exception as e:
+        print(f"[db] ❌ Failed to connect to database: {e}", flush=True)
+        import traceback
+        print(f"[db] Traceback: {traceback.format_exc()}", flush=True)
+        return None
 
 
 def _ensure_db_tables(conn) -> None:
+    print("[db] Ensuring database tables exist...", flush=True)
     with conn.cursor() as cur:
         cur.execute(
             f"""
@@ -98,11 +109,71 @@ def _ensure_db_tables(conn) -> None:
                 listing_id BIGINT NOT NULL,
                 ranking DOUBLE PRECISION,
                 demand DOUBLE PRECISION,
+                title TEXT,
+                url TEXT,
+                etsy_user_id TEXT,
+                shop_id TEXT,
+                state TEXT,
+                description TEXT,
+                created_at_ts BIGINT,
+                created_at TIMESTAMPTZ,
+                last_modified_ts BIGINT,
+                last_modified_at TIMESTAMPTZ,
+                image_url TEXT,
+                image_srcset TEXT,
+                tags JSONB DEFAULT '[]'::jsonb,
+                materials JSONB DEFAULT '[]'::jsonb,
+                keywords JSONB DEFAULT '[]'::jsonb,
+                variations JSONB DEFAULT '[]'::jsonb,
+                quantity INTEGER,
+                num_favorers INTEGER,
+                listing_type TEXT DEFAULT '',
+                file_data TEXT DEFAULT '',
+                views INTEGER,
                 price_value DOUBLE PRECISION,
+                price_currency TEXT DEFAULT '',
+                price_display TEXT DEFAULT '',
+                price_amount_raw DOUBLE PRECISION,
+                price_divisor_raw INTEGER,
+                sale_percent DOUBLE PRECISION,
                 sale_price_value DOUBLE PRECISION,
+                sale_price_display TEXT DEFAULT '',
+                sale_original_price DOUBLE PRECISION,
+                sale_original_price_display TEXT DEFAULT '',
+                sale_active_promotion_id TEXT DEFAULT '',
+                sale_active_promotion_start_ts BIGINT,
+                sale_active_promotion_end_ts BIGINT,
+                sale_active_promotion_created_ts BIGINT,
+                sale_active_promotion_updated_ts BIGINT,
+                sale_active_promotion_description TEXT DEFAULT '',
+                free_shipping BOOLEAN,
+                buyer_promotion_name TEXT DEFAULT '',
+                buyer_shop_promotion_name TEXT DEFAULT '',
+                buyer_promotion_description TEXT DEFAULT '',
+                buyer_applied_promotion_description TEXT DEFAULT '',
+                keyword_insights JSONB DEFAULT '[]'::jsonb,
+                demand_extras JSONB DEFAULT '{{}}'::jsonb,
+                shop_sections JSONB DEFAULT '[]'::jsonb,
+                shop_reviews JSONB DEFAULT '[]'::jsonb,
+                shop_languages JSONB DEFAULT '[]'::jsonb,
+                shop_created_ts BIGINT,
+                shop_created_at TIMESTAMPTZ,
+                shop_updated_ts BIGINT,
+                shop_updated_at TIMESTAMPTZ,
+                shop_details JSONB DEFAULT '{{}}'::jsonb,
+                reviews JSONB DEFAULT '[]'::jsonb,
                 review_count INTEGER,
                 review_average DOUBLE PRECISION,
-                payload JSONB NOT NULL,
+                is_personalizable BOOLEAN,
+                personalization_is_required BOOLEAN,
+                personalization_char_count_max INTEGER,
+                personalization_instructions TEXT DEFAULT '',
+                processing_min INTEGER,
+                processing_max INTEGER,
+                who_made TEXT DEFAULT '',
+                when_made TEXT DEFAULT '',
+                production_partners JSONB DEFAULT '[]'::jsonb,
+                icon_url_fullxfull TEXT DEFAULT '',
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 updated_at TIMESTAMPTZ DEFAULT NOW(),
                 PRIMARY KEY (session_id, listing_id)
@@ -115,6 +186,86 @@ def _ensure_db_tables(conn) -> None:
         cur.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_ENTRIES}_keyword ON {DB_TABLE_ENTRIES} (keyword_slug)"
         )
+        
+        # Migration: Add missing columns if they don't exist
+        # Check if table exists and has old schema, then add new columns
+        cur.execute(f"""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = '{DB_TABLE_ENTRIES}'
+        """)
+        existing_columns = {row[0] for row in cur.fetchall()}
+        
+        # List of columns to add if missing
+        columns_to_add = [
+            ("created_at_ts", "BIGINT"),
+            ("created_at", "TIMESTAMPTZ"),
+            ("last_modified_ts", "BIGINT"),
+            ("last_modified_at", "TIMESTAMPTZ"),
+            ("quantity", "INTEGER"),
+            ("num_favorers", "INTEGER"),
+            ("listing_type", "TEXT DEFAULT ''"),
+            ("file_data", "TEXT DEFAULT ''"),
+            ("views", "INTEGER"),
+            ("price_currency", "TEXT DEFAULT ''"),
+            ("price_display", "TEXT DEFAULT ''"),
+            ("price_amount_raw", "DOUBLE PRECISION"),
+            ("price_divisor_raw", "INTEGER"),
+            ("sale_percent", "DOUBLE PRECISION"),
+            ("sale_price_display", "TEXT DEFAULT ''"),
+            ("sale_original_price", "DOUBLE PRECISION"),
+            ("sale_original_price_display", "TEXT DEFAULT ''"),
+            ("sale_active_promotion_id", "TEXT DEFAULT ''"),
+            ("sale_active_promotion_start_ts", "BIGINT"),
+            ("sale_active_promotion_end_ts", "BIGINT"),
+            ("sale_active_promotion_created_ts", "BIGINT"),
+            ("sale_active_promotion_updated_ts", "BIGINT"),
+            ("sale_active_promotion_description", "TEXT DEFAULT ''"),
+            ("free_shipping", "BOOLEAN"),
+            ("buyer_promotion_name", "TEXT DEFAULT ''"),
+            ("buyer_shop_promotion_name", "TEXT DEFAULT ''"),
+            ("buyer_promotion_description", "TEXT DEFAULT ''"),
+            ("buyer_applied_promotion_description", "TEXT DEFAULT ''"),
+            ("demand_extras", "JSONB DEFAULT '{}'::jsonb"),
+            ("shop_sections", "JSONB DEFAULT '[]'::jsonb"),
+            ("shop_reviews", "JSONB DEFAULT '[]'::jsonb"),
+            ("shop_languages", "JSONB DEFAULT '[]'::jsonb"),
+            ("shop_created_ts", "BIGINT"),
+            ("shop_created_at", "TIMESTAMPTZ"),
+            ("shop_updated_ts", "BIGINT"),
+            ("shop_updated_at", "TIMESTAMPTZ"),
+            ("shop_details", "JSONB DEFAULT '{}'::jsonb"),
+            ("reviews", "JSONB DEFAULT '[]'::jsonb"),
+            ("is_personalizable", "BOOLEAN"),
+            ("personalization_is_required", "BOOLEAN"),
+            ("personalization_char_count_max", "INTEGER"),
+            ("personalization_instructions", "TEXT DEFAULT ''"),
+            ("processing_min", "INTEGER"),
+            ("processing_max", "INTEGER"),
+            ("who_made", "TEXT DEFAULT ''"),
+            ("when_made", "TEXT DEFAULT ''"),
+            ("production_partners", "JSONB DEFAULT '[]'::jsonb"),
+            ("icon_url_fullxfull", "TEXT DEFAULT ''"),
+        ]
+        
+        for col_name, col_type in columns_to_add:
+            if col_name not in existing_columns:
+                try:
+                    # Use SAVEPOINT to handle errors per column without aborting entire transaction
+                    savepoint_name = f"sp_add_{col_name}"
+                    cur.execute(f"SAVEPOINT {savepoint_name}")
+                    # Build SQL - col_type already has the correct syntax, just substitute table and column names
+                    # Use % formatting to avoid issues with {} in JSONB defaults
+                    sql = "ALTER TABLE %s ADD COLUMN %s %s" % (DB_TABLE_ENTRIES, col_name, col_type)
+                    cur.execute(sql)
+                    cur.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+                    print(f"[db] ✅ Added column {col_name} to {DB_TABLE_ENTRIES}", flush=True)
+                except Exception as e:
+                    try:
+                        cur.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                    except:
+                        pass
+                    print(f"[db] ⚠️ Failed to add column {col_name}: {e}", flush=True)
         cur.execute(
             f"""
             CREATE TABLE IF NOT EXISTS {DB_TABLE_REVIEWS} (
@@ -140,7 +291,131 @@ def _ensure_db_tables(conn) -> None:
         cur.execute(
             f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_REVIEWS}_session ON {DB_TABLE_REVIEWS} (session_id)"
         )
+        # Single searches table (matches Django SingleSearch model)
+        cur.execute(
+            f"""
+            CREATE TABLE IF NOT EXISTS {DB_TABLE_SINGLE_SEARCHES} (
+                user_id TEXT NOT NULL,
+                listing_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                title TEXT DEFAULT '',
+                url TEXT DEFAULT '',
+                demand DOUBLE PRECISION,
+                ranking DOUBLE PRECISION,
+                etsy_user_id TEXT,
+                shop_id TEXT,
+                state TEXT DEFAULT '',
+                description TEXT DEFAULT '',
+                created_at_ts BIGINT,
+                created_at TIMESTAMPTZ,
+                last_modified_ts BIGINT,
+                last_modified_at TIMESTAMPTZ,
+                image_url TEXT DEFAULT '',
+                image_srcset TEXT DEFAULT '',
+                tags JSONB DEFAULT '[]'::jsonb,
+                materials JSONB DEFAULT '[]'::jsonb,
+                keywords JSONB DEFAULT '[]'::jsonb,
+                variations JSONB DEFAULT '[]'::jsonb,
+                quantity INTEGER,
+                num_favorers INTEGER,
+                listing_type TEXT DEFAULT '',
+                file_data TEXT DEFAULT '',
+                views INTEGER,
+                price_value DOUBLE PRECISION,
+                price_currency TEXT DEFAULT '',
+                price_display TEXT DEFAULT '',
+                price_amount_raw DOUBLE PRECISION,
+                price_divisor_raw INTEGER,
+                sale_percent DOUBLE PRECISION,
+                sale_price_value DOUBLE PRECISION,
+                sale_price_display TEXT DEFAULT '',
+                sale_original_price DOUBLE PRECISION,
+                sale_original_price_display TEXT DEFAULT '',
+                sale_active_promotion_id TEXT DEFAULT '',
+                sale_active_promotion_start_ts BIGINT,
+                sale_active_promotion_end_ts BIGINT,
+                sale_active_promotion_created_ts BIGINT,
+                sale_active_promotion_updated_ts BIGINT,
+                sale_active_promotion_description TEXT DEFAULT '',
+                free_shipping BOOLEAN,
+                buyer_promotion_name TEXT DEFAULT '',
+                buyer_shop_promotion_name TEXT DEFAULT '',
+                buyer_promotion_description TEXT DEFAULT '',
+                buyer_applied_promotion_description TEXT DEFAULT '',
+                keyword_insights JSONB DEFAULT '[]'::jsonb,
+                demand_extras JSONB DEFAULT '{{}}'::jsonb,
+                shop_sections JSONB DEFAULT '[]'::jsonb,
+                shop_reviews JSONB DEFAULT '[]'::jsonb,
+                shop_languages JSONB DEFAULT '[]'::jsonb,
+                shop_created_ts BIGINT,
+                shop_created_at TIMESTAMPTZ,
+                shop_updated_ts BIGINT,
+                shop_updated_at TIMESTAMPTZ,
+                shop_details JSONB DEFAULT '{{}}'::jsonb,
+                reviews JSONB DEFAULT '[]'::jsonb,
+                review_count INTEGER,
+                review_average DOUBLE PRECISION,
+                processing_min INTEGER,
+                processing_max INTEGER,
+                who_made TEXT DEFAULT '',
+                when_made TEXT DEFAULT '',
+                is_personalizable BOOLEAN,
+                personalization_is_required BOOLEAN,
+                personalization_char_count_max INTEGER,
+                personalization_instructions TEXT DEFAULT '',
+                production_partners JSONB DEFAULT '[]'::jsonb,
+                icon_url_fullxfull TEXT DEFAULT '',
+                updated_at TIMESTAMPTZ DEFAULT NOW(),
+                PRIMARY KEY (user_id, listing_id, session_id)
+            )
+            """
+        )
+        
+        # Migration: Add missing columns for single_searches if they don't exist
+        cur.execute(f"""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = '{DB_TABLE_SINGLE_SEARCHES}'
+        """)
+        existing_single_columns = {row[0] for row in cur.fetchall()}
+        
+        single_columns_to_add = [
+            ("processing_min", "INTEGER"),
+            ("processing_max", "INTEGER"),
+            ("who_made", "TEXT DEFAULT ''"),
+            ("when_made", "TEXT DEFAULT ''"),
+            ("is_personalizable", "BOOLEAN"),
+            ("personalization_is_required", "BOOLEAN"),
+            ("personalization_char_count_max", "INTEGER"),
+            ("personalization_instructions", "TEXT DEFAULT ''"),
+            ("production_partners", "JSONB DEFAULT '[]'::jsonb"),
+            ("icon_url_fullxfull", "TEXT DEFAULT ''"),
+            ("taxonomy_id", "INTEGER"),
+        ]
+        
+        for col_name, col_type in single_columns_to_add:
+            if col_name not in existing_single_columns:
+                try:
+                    savepoint_name = f"sp_add_single_{col_name}"
+                    cur.execute(f"SAVEPOINT {savepoint_name}")
+                    sql = "ALTER TABLE %s ADD COLUMN %s %s" % (DB_TABLE_SINGLE_SEARCHES, col_name, col_type)
+                    cur.execute(sql)
+                    cur.execute(f"RELEASE SAVEPOINT {savepoint_name}")
+                    print(f"[db] ✅ Added column {col_name} to {DB_TABLE_SINGLE_SEARCHES}", flush=True)
+                except Exception as e:
+                    try:
+                        cur.execute(f"ROLLBACK TO SAVEPOINT {savepoint_name}")
+                    except:
+                        pass
+                    print(f"[db] ⚠️ Failed to add column {col_name} to {DB_TABLE_SINGLE_SEARCHES}: {e}", flush=True)
+        cur.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_SINGLE_SEARCHES}_user_created ON {DB_TABLE_SINGLE_SEARCHES} (user_id, created_at DESC)"
+        )
+        cur.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{DB_TABLE_SINGLE_SEARCHES}_listing ON {DB_TABLE_SINGLE_SEARCHES} (listing_id)"
+        )
         conn.commit()
+        print(f"[db] ✅ Database tables ensured: {DB_TABLE_BATCHES}, {DB_TABLE_ENTRIES}, {DB_TABLE_REVIEWS}, {DB_TABLE_SINGLE_SEARCHES}", flush=True)
 
 
 
@@ -372,19 +647,48 @@ def _simplify_ranked_entry(entry: Dict[str, Any]) -> Tuple[Optional[int], Dict[s
     if not isinstance(keywords, list):
         keywords = []
 
+    # Extract price with multiple fallbacks
     price_obj = popular.get("price") or entry.get("price") or {}
-    price_amount = price_obj.get("amount")
-    price_divisor = price_obj.get("divisor") or 1
-    price_currency = price_obj.get("currency_code") or ""
+    
+    # Debug logging for price extraction
+    if not price_obj or not isinstance(price_obj, dict):
+        # Try to get price from listing_details if available
+        listing_details = entry.get("listing_details")
+        if isinstance(listing_details, dict):
+            price_obj = listing_details.get("price") or {}
+        # If still empty, check if price is directly in popular_info at root level
+        if not price_obj or not isinstance(price_obj, dict):
+            # Last resort: check if there's a price field we missed
+            for key in ["price", "Price", "PRICE"]:
+                if key in popular:
+                    price_obj = popular[key] if isinstance(popular[key], dict) else {}
+                    break
+    
+    price_amount = price_obj.get("amount") if isinstance(price_obj, dict) else None
+    price_divisor = price_obj.get("divisor") if isinstance(price_obj, dict) else 1
+    price_currency = price_obj.get("currency_code") if isinstance(price_obj, dict) else ""
+    
+    # Debug: log price extraction
+    if listing_id and (not price_amount or price_amount is None):
+        print(f"[_simplify_ranked_entry] ⚠️ WARNING: No price_amount for listing_id={listing_id}", flush=True)
+        print(f"[_simplify_ranked_entry] 🔍 price_obj: {price_obj}", flush=True)
+        print(f"[_simplify_ranked_entry] 🔍 popular.get('price'): {popular.get('price')}", flush=True)
+        print(f"[_simplify_ranked_entry] 🔍 entry.get('price'): {entry.get('price')}", flush=True)
+        print(f"[_simplify_ranked_entry] 🔍 popular keys: {list(popular.keys())[:20] if isinstance(popular, dict) else 'N/A'}", flush=True)
+    
     price_value = None
     price_display = None
     try:
         if price_amount is not None and price_divisor:
             price_value = float(price_amount) / float(price_divisor)
             price_display = f"{price_value:.2f} {price_currency}".strip()
-    except Exception:
+            if listing_id:
+                print(f"[_simplify_ranked_entry] ✅ Price extracted for listing_id={listing_id}: value={price_value}, amount={price_amount}, divisor={price_divisor}, currency={price_currency}", flush=True)
+    except Exception as e:
         price_value = None
         price_display = None
+        if listing_id:
+            print(f"[_simplify_ranked_entry] ❌ Error calculating price for listing_id={listing_id}: {e}", flush=True)
 
     sale_info = entry.get("sale_info") or popular.get("sale_info") or {}
     sale_percent = _parse_sale_percent(sale_info)
@@ -410,12 +714,25 @@ def _simplify_ranked_entry(entry: Dict[str, Any]) -> Tuple[Optional[int], Dict[s
     listing_type = entry.get("listing_type") or popular.get("listing_type") or ""
     file_data = entry.get("file_data") or popular.get("file_data") or ""
     views = entry.get("views") or popular.get("views")
+    
+    # Extract personalization fields
+    is_personalizable = entry.get("is_personalizable") or popular.get("is_personalizable")
+    if not isinstance(is_personalizable, bool):
+        is_personalizable = None
+    personalization_is_required = entry.get("personalization_is_required") or popular.get("personalization_is_required")
+    if not isinstance(personalization_is_required, bool):
+        personalization_is_required = None
+    personalization_char_count_max = _safe_int(entry.get("personalization_char_count_max") or popular.get("personalization_char_count_max"))
+    personalization_instructions = (entry.get("personalization_instructions") or popular.get("personalization_instructions") or "")
+    
+    # Extract processing fields
+    processing_min = _safe_int(entry.get("processing_min") or popular.get("processing_min"))
+    processing_max = _safe_int(entry.get("processing_max") or popular.get("processing_max"))
+    who_made = (entry.get("who_made") or popular.get("who_made") or "")
+    when_made = (entry.get("when_made") or popular.get("when_made") or "")
 
     shop = entry.get("shop") or {}
     shop_details = shop.get("details") or {}
-    shop_sections = shop.get("sections") or []
-    if not isinstance(shop_sections, list):
-        shop_sections = []
     shop_reviews = shop.get("reviews") or []
     if not isinstance(shop_reviews, list):
         shop_reviews = []
@@ -428,43 +745,81 @@ def _simplify_ranked_entry(entry: Dict[str, Any]) -> Tuple[Optional[int], Dict[s
         shop_details.get("updated_timestamp") or shop_details.get("update_date") or shop.get("updated_timestamp")
     )
 
-    shop_languages = shop_details.get("languages")
+    # Build shop_obj with fallbacks to ensure we get all values
+    # Try shop_details first, then fallback to shop root level, then to popular_info.shop
+    def _get_shop_field(key, default=None):
+        """Get shop field with multiple fallbacks"""
+        # Try shop_details first
+        value = shop_details.get(key) if isinstance(shop_details, dict) else None
+        if value is not None:
+            return value
+        
+        # Try shop root level
+        value = shop.get(key) if isinstance(shop, dict) else None
+        if value is not None:
+            return value
+        
+        # Try popular_info.shop.details
+        popular_shop = popular.get("shop") if isinstance(popular, dict) else None
+        if isinstance(popular_shop, dict):
+            popular_shop_details = popular_shop.get("details")
+            if isinstance(popular_shop_details, dict):
+                value = popular_shop_details.get(key)
+                if value is not None:
+                    return value
+            # Try popular_info.shop root level
+            value = popular_shop.get(key)
+            if value is not None:
+                return value
+        
+        # Debug logging for critical fields
+        if listing_id and key in ("shop_name", "user_id", "login_name", "currency_code", "num_favorers", "review_count", "review_average", "sections", "languages", "announcement", "sale_message", "digital_sale_message", "vacation_message"):
+            print(f"[_simplify_ranked_entry] ⚠️ shop field '{key}' is None for listing_id={listing_id} (shop_details.type={type(shop_details)}, shop.type={type(shop)})", flush=True)
+        
+        return default
+    
+    # Extract sections and languages with proper fallbacks using the helper function
+    shop_sections = _get_shop_field("sections") or []
+    if not isinstance(shop_sections, list):
+        shop_sections = []
+    
+    shop_languages = _get_shop_field("languages") or []
     if not isinstance(shop_languages, list):
         shop_languages = []
-
+    
     shop_obj = {
-        "shop_id": shop_details.get("shop_id") or shop.get("shop_id"),
-        "shop_name": shop_details.get("shop_name"),
-        "user_id": shop_details.get("user_id"),
+        "shop_id": _get_shop_field("shop_id") or shop.get("shop_id"),
+        "shop_name": _get_shop_field("shop_name"),
+        "user_id": _get_shop_field("user_id"),
         "created_timestamp": shop_created_ts,
         "created_iso": shop_created_iso,
         "created": shop_created_disp,
-        "title": shop_details.get("title"),
-        "announcement": shop_details.get("announcement"),
-        "currency_code": shop_details.get("currency_code"),
-        "is_vacation": shop_details.get("is_vacation"),
-        "vacation_message": shop_details.get("vacation_message"),
-        "sale_message": shop_details.get("sale_message"),
-        "digital_sale_message": shop_details.get("digital_sale_message"),
+        "title": _get_shop_field("title"),
+        "announcement": _get_shop_field("announcement"),
+        "currency_code": _get_shop_field("currency_code"),
+        "is_vacation": _get_shop_field("is_vacation"),
+        "vacation_message": _get_shop_field("vacation_message"),
+        "sale_message": _get_shop_field("sale_message"),
+        "digital_sale_message": _get_shop_field("digital_sale_message"),
         "updated_timestamp": shop_updated_ts,
         "updated_iso": shop_updated_iso,
         "updated": shop_updated_disp,
-        "listing_active_count": shop_details.get("listing_active_count"),
-        "digital_listing_count": shop_details.get("digital_listing_count"),
-        "login_name": shop_details.get("login_name"),
-        "accepts_custom_requests": shop_details.get("accepts_custom_requests"),
-        "vacation_autoreply": shop_details.get("vacation_autoreply"),
-        "url": shop_details.get("url") or shop.get("url"),
-        "image_url_760x100": shop_details.get("image_url_760x100"),
-        "icon_url_fullxfull": shop_details.get("icon_url_fullxfull"),
-        "num_favorers": shop_details.get("num_favorers"),
-        "languages": shop_languages,
-        "review_average": shop_details.get("review_average"),
-        "review_count": shop_details.get("review_count"),
-        "sections": shop_sections,
+        "listing_active_count": _get_shop_field("listing_active_count"),
+        "digital_listing_count": _get_shop_field("digital_listing_count"),
+        "login_name": _get_shop_field("login_name"),
+        "accepts_custom_requests": _get_shop_field("accepts_custom_requests"),
+        "vacation_autoreply": _get_shop_field("vacation_autoreply"),
+        "url": _get_shop_field("url") or shop.get("url"),
+        "image_url_760x100": _get_shop_field("image_url_760x100"),
+        "icon_url_fullxfull": _get_shop_field("icon_url_fullxfull"),
+        "num_favorers": _get_shop_field("num_favorers"),
+        "languages": shop_languages,  # Use extracted shop_languages
+        "review_average": _get_shop_field("review_average") or review_average,  # Fallback to collected review_average
+        "review_count": _get_shop_field("review_count") or review_count,  # Fallback to collected review_count
+        "sections": shop_sections,  # Use extracted shop_sections
         "reviews": shop_reviews,
-        "shipping_from_country_iso": shop_details.get("shipping_from_country_iso"),
-        "transaction_sold_count": shop_details.get("transaction_sold_count"),
+        "shipping_from_country_iso": _get_shop_field("shipping_from_country_iso"),
+        "transaction_sold_count": _get_shop_field("transaction_sold_count"),
     }
 
     payload = {
@@ -510,6 +865,16 @@ def _simplify_ranked_entry(entry: Dict[str, Any]) -> Tuple[Optional[int], Dict[s
         "listing_type": listing_type,
         "file_data": file_data,
         "views": views,
+        "is_personalizable": is_personalizable,
+        "personalization_is_required": personalization_is_required,
+        "personalization_char_count_max": personalization_char_count_max,
+        "personalization_instructions": personalization_instructions,
+        "processing_min": processing_min,
+        "processing_max": processing_max,
+        "who_made": who_made,
+        "when_made": when_made,
+        "production_partners": entry.get("production_partners") or popular.get("production_partners") or [],
+        "icon_url_fullxfull": shop_obj.get("icon_url_fullxfull") or shop_details.get("icon_url_fullxfull") or shop.get("icon_url_fullxfull") or "",
         "demand_extras": entry.get("demand_extras") or popular.get("demand_extras") or {},
         "shop": shop_obj,
     }
@@ -525,6 +890,607 @@ def _simplify_ranked_entry(entry: Dict[str, Any]) -> Tuple[Optional[int], Dict[s
     }
     return listing_id, payload, summary
 
+
+def _extract_single_search_fields(entry: Dict[str, Any], user_id: str, session_id: str, etsy_user_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Extract all fields from entry to match Django SingleSearch model structure.
+    Based on Django model's create_from_entry method.
+    """
+    popular = entry.get("popular_info") or entry.get("popular") or {}
+    
+    # Extract listing_id - ensure it's a valid integer, then convert to string for storage
+    raw_listing_id = entry.get("listing_id") or popular.get("listing_id")
+    if raw_listing_id is None:
+        raise ValueError("listing_id is required but not found in entry")
+    try:
+        # Ensure it's an integer first
+        listing_id_int = int(raw_listing_id)
+        listing_id = str(listing_id_int)
+    except (ValueError, TypeError):
+        raise ValueError(f"Invalid listing_id: {raw_listing_id}")
+    title = (popular.get("title") or entry.get("title") or "")[:512]
+    url = (popular.get("url") or entry.get("url") or "")[:1024]
+    demand = _safe_float(popular.get("demand") or entry.get("demand") or entry.get("demand_value"))
+    
+    ranking_raw = (entry.get("ranking") or popular.get("ranking") or entry.get("Ranking") or
+                   popular.get("Ranking") or entry.get("rank") or popular.get("rank"))
+    ranking = _safe_float(ranking_raw) if (ranking_raw is not None and str(ranking_raw).strip()) else None
+    
+    extracted_etsy_user_id = str(entry.get("user_id") or popular.get("user_id") or etsy_user_id or "")
+    shop_id = str(entry.get("shop_id") or popular.get("shop_id") or "")
+    state = (entry.get("state") or popular.get("state") or "")[:64]
+    description = (popular.get("description") or entry.get("description") or "")
+    
+    # Timestamps
+    ts = (popular.get("original_creation_timestamp") or popular.get("created_timestamp") or
+          entry.get("original_creation_timestamp") or entry.get("created_timestamp"))
+    created_at_ts = int(ts) if ts is not None else None
+    created_at = None
+    if created_at_ts:
+        try:
+            created_at = datetime.fromtimestamp(created_at_ts, tz=timezone.utc)
+        except Exception:
+            pass
+    
+    last_modified_ts = (popular.get("last_modified_timestamp") or entry.get("last_modified_timestamp"))
+    last_modified_ts_int = int(last_modified_ts) if last_modified_ts is not None else None
+    last_modified_at = None
+    if last_modified_ts_int:
+        try:
+            last_modified_at = datetime.fromtimestamp(last_modified_ts_int, tz=timezone.utc)
+        except Exception:
+            pass
+    
+    # Primary image
+    primary_image = entry.get("primary_image") or popular.get("primary_image") or {}
+    image_url = primary_image.get("image_url") or ""
+    image_srcset = primary_image.get("srcset") or ""
+    
+    # Variations (extract from variations_cleaned)
+    variations_cleaned = entry.get("variations_cleaned") or popular.get("variations_cleaned") or {}
+    var_variations = []
+    vlist = variations_cleaned.get("variations") or []
+    if isinstance(vlist, list):
+        for v in vlist:
+            if isinstance(v, dict):
+                vopts = v.get("options") or []
+                opts_out = []
+                if isinstance(vopts, list):
+                    for o in vopts:
+                        if isinstance(o, dict):
+                            opts_out.append({"value": o.get("value"), "label": o.get("label")})
+                var_variations.append({"id": v.get("id"), "title": v.get("title"), "options": opts_out})
+    
+    # Tags, materials, keywords
+    tags = popular.get("tags") or entry.get("tags") or []
+    if not isinstance(tags, list):
+        tags = []
+    materials = popular.get("materials") or entry.get("materials") or []
+    if not isinstance(materials, list):
+        materials = []
+    keywords = entry.get("keywords") or popular.get("keywords") or []
+    if not isinstance(keywords, list):
+        keywords = []
+    
+    # Quantity, num_favorers, etc.
+    quantity = _safe_int(entry.get("quantity") or popular.get("quantity"))
+    num_favorers = _safe_int(entry.get("num_favorers") or popular.get("num_favorers"))
+    listing_type = (entry.get("listing_type") or popular.get("listing_type") or "")[:64]
+    file_data = entry.get("file_data") or popular.get("file_data") or ""
+    views = _safe_int(entry.get("views") or popular.get("views"))
+    
+    # Price extraction
+    price = popular.get("price") or entry.get("price") or {}
+    price_amount = price.get("amount") if isinstance(price, dict) else None
+    price_divisor = price.get("divisor") if isinstance(price, dict) else None
+    price_currency = (price.get("currency_code") or "")[:8] if isinstance(price, dict) else ""
+    price_value = None
+    price_display = None
+    try:
+        if isinstance(price_amount, (int, float)) and isinstance(price_divisor, int) and price_divisor:
+            price_value = float(price_amount) / int(price_divisor)
+            disp = ('{:.2f}'.format(price_value)).rstrip('0').rstrip('.')
+            price_display = f'{disp} {price_currency}'.strip()[:64]
+    except Exception:
+        price_value = None
+        price_display = None
+    
+    # Sale info extraction
+    sale_info = popular.get("sale_info") or entry.get("sale_info") or {}
+    active_promo = sale_info.get("active_promotion") or {}
+    buyer_promotion_name = (active_promo.get("buyer_promotion_name") or "")[:255]
+    buyer_shop_promotion_name = (active_promo.get("buyer_shop_promotion_name") or "")[:255]
+    buyer_promotion_description = active_promo.get("buyer_promotion_description") or ""
+    buyer_applied_promotion_description = active_promo.get("buyer_applied_promotion_description") or ""
+    
+    sale_percent = _parse_sale_percent(sale_info)
+    
+    sale_subtotal_after_discount = sale_info.get("subtotal_after_discount")
+    sale_original_price_display = sale_info.get("original_price") or ""
+    sale_original_price = None
+    try:
+        if isinstance(sale_original_price_display, str) and sale_original_price_display.strip():
+            cleaned_op = re.sub(r'[^0-9.]', '', sale_original_price_display)
+            if cleaned_op:
+                sale_original_price = float(cleaned_op)
+    except Exception:
+        sale_original_price = None
+    
+    sale_price_value = None
+    sale_price_display = None
+    if isinstance(sale_subtotal_after_discount, str) and sale_subtotal_after_discount.strip():
+        sale_price_display = sale_subtotal_after_discount.strip()[:64]
+        try:
+            cleaned = re.sub(r'[^0-9.]', '', sale_price_display)
+            if cleaned:
+                sale_price_value = float(cleaned)
+        except Exception:
+            sale_price_value = None
+    elif (price_value is not None) and (sale_percent is not None):
+        try:
+            sale_price_value = price_value * (1.0 - (sale_percent / 100.0))
+            disp = ('{:.2f}'.format(sale_price_value)).rstrip('0').rstrip('.')
+            sale_price_display = f'{disp} {price_currency}'.strip()[:64]
+        except Exception:
+            sale_price_value = None
+            sale_price_display = None
+    
+    sale_active_promotion_id = str(active_promo.get("id") or "")[:64]
+    sale_active_promotion_start_ts = _safe_int(active_promo.get("start_timestamp"))
+    sale_active_promotion_end_ts = _safe_int(active_promo.get("end_timestamp"))
+    sale_active_promotion_created_ts = _safe_int(active_promo.get("created_timestamp"))
+    sale_active_promotion_updated_ts = _safe_int(active_promo.get("updated_timestamp"))
+    sale_active_promotion_description = (buyer_applied_promotion_description or buyer_promotion_description or "")
+    free_shipping = sale_info.get("free_shipping")
+    if not isinstance(free_shipping, bool):
+        free_shipping = None
+    
+    # Shop data - use same extraction logic as _simplify_ranked_entry
+    shop = popular.get("shop") or entry.get("shop") or {}
+    shop_details = shop.get("details") or {}
+    if not isinstance(shop_details, dict):
+        shop_details = {}
+    
+    # Helper function to get shop field from multiple sources (same as _simplify_ranked_entry)
+    def _get_shop_field_single(key, default=None):
+        # Try shop.details first
+        value = shop_details.get(key) if isinstance(shop_details, dict) else None
+        if value is not None:
+            return value
+        # Try popular_info.shop.details
+        popular_shop = popular.get("shop") or {}
+        popular_shop_details = popular_shop.get("details") or {}
+        if isinstance(popular_shop_details, dict):
+            value = popular_shop_details.get(key)
+            if value is not None:
+                return value
+        # Try popular_info.shop root level
+        value = popular_shop.get(key)
+        if value is not None:
+            return value
+        # Try entry.shop root level
+        value = shop.get(key)
+        if value is not None:
+            return value
+        return default
+    
+    shop_created_ts = (_safe_int(_get_shop_field_single("created_timestamp")) or
+                      _safe_int(_get_shop_field_single("create_date")) or
+                      _safe_int(shop.get("created_timestamp")))
+    shop_updated_ts = (_safe_int(_get_shop_field_single("updated_timestamp")) or
+                      _safe_int(_get_shop_field_single("update_date")) or
+                      _safe_int(shop.get("updated_timestamp")))
+    shop_created_at = None
+    if shop_created_ts:
+        try:
+            shop_created_at = datetime.fromtimestamp(shop_created_ts, tz=timezone.utc)
+        except Exception:
+            pass
+    shop_updated_at = None
+    if shop_updated_ts:
+        try:
+            shop_updated_at = datetime.fromtimestamp(shop_updated_ts, tz=timezone.utc)
+        except Exception:
+            pass
+    
+    shop_sections = _get_shop_field_single("sections") or []
+    if not isinstance(shop_sections, list):
+        shop_sections = []
+    shop_languages = _get_shop_field_single("languages") or []
+    if not isinstance(shop_languages, list):
+        shop_languages = []
+    
+    # Shop reviews (simplified)
+    shop_reviews = shop.get("reviews") or []
+    shop_reviews_simplified = []
+    if isinstance(shop_reviews, list):
+        try:
+            for rv in shop_reviews:
+                if not isinstance(rv, dict):
+                    continue
+                cts = rv.get("created_timestamp") or rv.get("create_timestamp")
+                uts = rv.get("updated_timestamp") or rv.get("update_timestamp")
+                c_iso = None
+                c_disp = None
+                u_iso = None
+                u_disp = None
+                if cts is not None:
+                    try:
+                        dt = datetime.fromtimestamp(int(cts), tz=timezone.utc)
+                        c_iso = dt.isoformat()
+                        c_disp = dt.strftime('%b %d, %Y')
+                    except Exception:
+                        c_disp = str(cts)
+                if uts is not None:
+                    try:
+                        dt = datetime.fromtimestamp(int(uts), tz=timezone.utc)
+                        u_iso = dt.isoformat()
+                        u_disp = dt.strftime('%b %d, %Y')
+                    except Exception:
+                        u_disp = str(uts)
+                shop_reviews_simplified.append({
+                    "shop_id": rv.get("shop_id"),
+                    "listing_id": rv.get("listing_id"),
+                    "transaction_id": rv.get("transaction_id"),
+                    "buyer_user_id": rv.get("buyer_user_id"),
+                    "rating": rv.get("rating"),
+                    "review": rv.get("review"),
+                    "language": rv.get("language"),
+                    "image_url_fullxfull": rv.get("image_url_fullxfull"),
+                    "created_timestamp": cts,
+                    "created_iso": c_iso,
+                    "created": c_disp,
+                    "updated_timestamp": uts,
+                    "updated_iso": u_iso,
+                    "updated": u_disp,
+                })
+        except Exception:
+            shop_reviews_simplified = []
+    
+    # Listing-specific reviews
+    listing_reviews = [rv for rv in shop_reviews_simplified if str(rv.get("listing_id")) == str(listing_id)]
+    listing_review_count = len(listing_reviews)
+    listing_review_average = None
+    if listing_review_count:
+        try:
+            listing_review_average = round(
+                sum((rv.get("rating") or 0) for rv in listing_reviews) / listing_review_count, 2
+            )
+        except Exception:
+            listing_review_average = None
+    
+    # Keyword insights from everbee
+    everbee = entry.get("everbee") or popular.get("everbee") or {}
+    everbee_results = everbee.get("results") or []
+    keyword_insights = _build_keyword_insights(entry)  # Use existing function
+    
+    demand_extras = entry.get("demand_extras") or popular.get("demand_extras") or {}
+    
+    # Shop details compact - use helper function to extract from multiple sources
+    shop_details_compact = {}
+    try:
+        shop_details_compact = {
+            "shop_id": (_get_shop_field_single("shop_id") or shop.get("shop_id")),
+            "shop_name": _get_shop_field_single("shop_name"),
+            "user_id": _get_shop_field_single("user_id"),
+            "created_timestamp": shop_created_ts,
+            "created_iso": (shop_created_at.isoformat() if shop_created_at else None),
+            "created": (shop_created_at.strftime('%b %d, %Y') if shop_created_at else (str(shop_created_ts) if shop_created_ts else None)),
+            "title": _get_shop_field_single("title"),
+            "announcement": _get_shop_field_single("announcement"),
+            "currency_code": _get_shop_field_single("currency_code"),
+            "is_vacation": _get_shop_field_single("is_vacation"),
+            "vacation_message": _get_shop_field_single("vacation_message"),
+            "sale_message": _get_shop_field_single("sale_message"),
+            "digital_sale_message": _get_shop_field_single("digital_sale_message"),
+            "updated_timestamp": shop_updated_ts,
+            "updated_iso": (shop_updated_at.isoformat() if shop_updated_at else None),
+            "updated": (shop_updated_at.strftime('%b %d, %Y') if shop_updated_at else (str(shop_updated_ts) if shop_updated_ts else None)),
+            "listing_active_count": _get_shop_field_single("listing_active_count"),
+            "digital_listing_count": _get_shop_field_single("digital_listing_count"),
+            "login_name": _get_shop_field_single("login_name"),
+            "accepts_custom_requests": _get_shop_field_single("accepts_custom_requests"),
+            "vacation_autoreply": _get_shop_field_single("vacation_autoreply"),
+            "url": (_get_shop_field_single("url") or shop.get("url")),
+            "image_url_760x100": _get_shop_field_single("image_url_760x100"),
+            "icon_url_fullxfull": _get_shop_field_single("icon_url_fullxfull"),
+            "num_favorers": _get_shop_field_single("num_favorers"),
+            "languages": shop_languages,
+            "review_average": _get_shop_field_single("review_average") or listing_review_average,
+            "review_count": _get_shop_field_single("review_count") or listing_review_count,
+            "shipping_from_country_iso": _get_shop_field_single("shipping_from_country_iso"),
+            "transaction_sold_count": _get_shop_field_single("transaction_sold_count"),
+        }
+    except Exception as e:
+        print(f"[_extract_single_search_fields] ⚠️ Error building shop_details_compact: {e}", flush=True)
+        shop_details_compact = {
+            "shop_id": (_get_shop_field_single("shop_id") or shop.get("shop_id")),
+            "url": (_get_shop_field_single("url") or shop.get("url")),
+            "languages": shop_languages,
+            "review_average": _get_shop_field_single("review_average") or listing_review_average,
+            "review_count": _get_shop_field_single("review_count") or listing_review_count,
+        }
+    
+    return {
+        "user_id": user_id,
+        "listing_id": listing_id,
+        "session_id": session_id,
+        "title": title,
+        "url": url,
+        "demand": demand,
+        "ranking": ranking,
+        "etsy_user_id": extracted_etsy_user_id,
+        "shop_id": shop_id,
+        "state": state,
+        "description": description,
+        "created_at_ts": created_at_ts,
+        "created_at": created_at,
+        "last_modified_ts": last_modified_ts_int,
+        "last_modified_at": last_modified_at,
+        "image_url": image_url,
+        "image_srcset": image_srcset,
+        "tags": tags,
+        "materials": materials,
+        "keywords": keywords,
+        "variations": var_variations,
+        "quantity": quantity,
+        "num_favorers": num_favorers,
+        "listing_type": listing_type,
+        "file_data": file_data,
+        "views": views,
+        "price_value": price_value,
+        "price_currency": price_currency,
+        "price_display": price_display,
+        "price_amount_raw": _safe_float(price_amount),
+        "price_divisor_raw": _safe_int(price_divisor),
+        "sale_percent": sale_percent,
+        "sale_price_value": sale_price_value,
+        "sale_price_display": sale_price_display,
+        "sale_original_price": _safe_float(sale_original_price),
+        "sale_original_price_display": sale_original_price_display[:64],
+        "sale_active_promotion_id": sale_active_promotion_id,
+        "sale_active_promotion_start_ts": sale_active_promotion_start_ts,
+        "sale_active_promotion_end_ts": sale_active_promotion_end_ts,
+        "sale_active_promotion_created_ts": sale_active_promotion_created_ts,
+        "sale_active_promotion_updated_ts": sale_active_promotion_updated_ts,
+        "sale_active_promotion_description": sale_active_promotion_description,
+        "free_shipping": free_shipping,
+        "buyer_promotion_name": buyer_promotion_name,
+        "buyer_shop_promotion_name": buyer_shop_promotion_name,
+        "buyer_promotion_description": buyer_promotion_description,
+        "buyer_applied_promotion_description": buyer_applied_promotion_description,
+        "keyword_insights": keyword_insights,
+        "demand_extras": demand_extras,
+        "shop_sections": shop_sections,
+        "shop_reviews": shop_reviews_simplified,
+        "shop_languages": shop_languages,
+        "shop_created_ts": shop_created_ts,
+        "shop_created_at": shop_created_at,
+        "shop_updated_ts": shop_updated_ts,
+        "shop_updated_at": shop_updated_at,
+        "shop_details": shop_details_compact,
+        "reviews": listing_reviews,
+        "review_count": listing_review_count,
+        "review_average": listing_review_average,
+        "processing_min": _safe_int(entry.get("processing_min") or popular.get("processing_min")),
+        "processing_max": _safe_int(entry.get("processing_max") or popular.get("processing_max")),
+        "who_made": (entry.get("who_made") or popular.get("who_made") or "")[:64],
+        "when_made": (entry.get("when_made") or popular.get("when_made") or "")[:64],
+        "is_personalizable": entry.get("is_personalizable") if isinstance(entry.get("is_personalizable"), bool) else (popular.get("is_personalizable") if isinstance(popular.get("is_personalizable"), bool) else None),
+        "personalization_is_required": entry.get("personalization_is_required") if isinstance(entry.get("personalization_is_required"), bool) else (popular.get("personalization_is_required") if isinstance(popular.get("personalization_is_required"), bool) else None),
+        "personalization_char_count_max": _safe_int(entry.get("personalization_char_count_max") or popular.get("personalization_char_count_max")),
+        "personalization_instructions": (entry.get("personalization_instructions") or popular.get("personalization_instructions") or ""),
+        "production_partners": entry.get("production_partners") or popular.get("production_partners") or [],
+        "icon_url_fullxfull": (shop_details_compact.get("icon_url_fullxfull") or _get_shop_field_single("icon_url_fullxfull") or ""),
+        "taxonomy_id": _safe_int(entry.get("taxonomy_id") or popular.get("taxonomy_id")),
+    }
+
+def persist_single_search(entry: Dict[str, Any], *, user_id: str, session_id: str, etsy_user_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Save single search to Railway database in Django SingleSearch model structure.
+    """
+    cfg = _db_settings()
+    if not cfg:
+        print("[db] Skipping single search persistence: database env vars not configured.", flush=True)
+        return {"saved": 0, "enabled": False}
+    
+    try:
+        fields = _extract_single_search_fields(entry, user_id, session_id, etsy_user_id)
+    except Exception as e:
+        print(f"[db] Failed to extract single search fields: {e}", flush=True)
+        import traceback
+        print(f"[db] Traceback: {traceback.format_exc()}", flush=True)
+        return {"saved": 0, "enabled": True, "error": str(e)}
+    
+    conn = _db_connect()
+    if conn is None:
+        print("[db] Unable to connect to PostgreSQL for single search. Entry not saved.", flush=True)
+        return {"saved": 0, "enabled": False}
+    
+    try:
+        _ensure_db_tables(conn)
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                INSERT INTO {DB_TABLE_SINGLE_SEARCHES} (
+                    user_id, listing_id, session_id, title, url, demand, ranking,
+                    etsy_user_id, shop_id, state, description,
+                    created_at_ts, created_at, last_modified_ts, last_modified_at,
+                    image_url, image_srcset, tags, materials, keywords, variations,
+                    quantity, num_favorers, listing_type, file_data, views,
+                    price_value, price_currency, price_display, price_amount_raw, price_divisor_raw,
+                    sale_percent, sale_price_value, sale_price_display,
+                    sale_original_price, sale_original_price_display,
+                    sale_active_promotion_id, sale_active_promotion_start_ts,
+                    sale_active_promotion_end_ts, sale_active_promotion_created_ts,
+                    sale_active_promotion_updated_ts, sale_active_promotion_description,
+                    free_shipping, buyer_promotion_name, buyer_shop_promotion_name,
+                    buyer_promotion_description, buyer_applied_promotion_description,
+                    keyword_insights, demand_extras,
+                    shop_sections, shop_reviews, shop_languages,
+                    shop_created_ts, shop_created_at, shop_updated_ts, shop_updated_at,
+                    shop_details, reviews, review_count, review_average,
+                    processing_min, processing_max, who_made, when_made,
+                    is_personalizable, personalization_is_required, personalization_char_count_max, personalization_instructions,
+                    production_partners, icon_url_fullxfull, taxonomy_id
+                )
+                VALUES (
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s,
+                    %s, %s,
+                    %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s
+                )
+                ON CONFLICT (user_id, listing_id, session_id) DO UPDATE SET
+                    title = EXCLUDED.title,
+                    url = EXCLUDED.url,
+                    demand = EXCLUDED.demand,
+                    ranking = EXCLUDED.ranking,
+                    etsy_user_id = EXCLUDED.etsy_user_id,
+                    shop_id = EXCLUDED.shop_id,
+                    state = EXCLUDED.state,
+                    description = EXCLUDED.description,
+                    created_at_ts = EXCLUDED.created_at_ts,
+                    created_at = EXCLUDED.created_at,
+                    last_modified_ts = EXCLUDED.last_modified_ts,
+                    last_modified_at = EXCLUDED.last_modified_at,
+                    image_url = EXCLUDED.image_url,
+                    image_srcset = EXCLUDED.image_srcset,
+                    tags = EXCLUDED.tags,
+                    materials = EXCLUDED.materials,
+                    keywords = EXCLUDED.keywords,
+                    variations = EXCLUDED.variations,
+                    quantity = EXCLUDED.quantity,
+                    num_favorers = EXCLUDED.num_favorers,
+                    listing_type = EXCLUDED.listing_type,
+                    file_data = EXCLUDED.file_data,
+                    views = EXCLUDED.views,
+                    price_value = EXCLUDED.price_value,
+                    price_currency = EXCLUDED.price_currency,
+                    price_display = EXCLUDED.price_display,
+                    price_amount_raw = EXCLUDED.price_amount_raw,
+                    price_divisor_raw = EXCLUDED.price_divisor_raw,
+                    sale_percent = EXCLUDED.sale_percent,
+                    sale_price_value = EXCLUDED.sale_price_value,
+                    sale_price_display = EXCLUDED.sale_price_display,
+                    sale_original_price = EXCLUDED.sale_original_price,
+                    sale_original_price_display = EXCLUDED.sale_original_price_display,
+                    sale_active_promotion_id = EXCLUDED.sale_active_promotion_id,
+                    sale_active_promotion_start_ts = EXCLUDED.sale_active_promotion_start_ts,
+                    sale_active_promotion_end_ts = EXCLUDED.sale_active_promotion_end_ts,
+                    sale_active_promotion_created_ts = EXCLUDED.sale_active_promotion_created_ts,
+                    sale_active_promotion_updated_ts = EXCLUDED.sale_active_promotion_updated_ts,
+                    sale_active_promotion_description = EXCLUDED.sale_active_promotion_description,
+                    free_shipping = EXCLUDED.free_shipping,
+                    buyer_promotion_name = EXCLUDED.buyer_promotion_name,
+                    buyer_shop_promotion_name = EXCLUDED.buyer_shop_promotion_name,
+                    buyer_promotion_description = EXCLUDED.buyer_promotion_description,
+                    buyer_applied_promotion_description = EXCLUDED.buyer_applied_promotion_description,
+                    keyword_insights = EXCLUDED.keyword_insights,
+                    demand_extras = EXCLUDED.demand_extras,
+                    shop_sections = EXCLUDED.shop_sections,
+                    shop_reviews = EXCLUDED.shop_reviews,
+                    shop_languages = EXCLUDED.shop_languages,
+                    shop_created_ts = EXCLUDED.shop_created_ts,
+                    shop_created_at = EXCLUDED.shop_created_at,
+                    shop_updated_ts = EXCLUDED.shop_updated_ts,
+                    shop_updated_at = EXCLUDED.shop_updated_at,
+                    shop_details = EXCLUDED.shop_details,
+                    reviews = EXCLUDED.reviews,
+                    review_count = EXCLUDED.review_count,
+                    review_average = EXCLUDED.review_average,
+                    processing_min = EXCLUDED.processing_min,
+                    processing_max = EXCLUDED.processing_max,
+                    who_made = EXCLUDED.who_made,
+                    when_made = EXCLUDED.when_made,
+                    is_personalizable = EXCLUDED.is_personalizable,
+                    personalization_is_required = EXCLUDED.personalization_is_required,
+                    personalization_char_count_max = EXCLUDED.personalization_char_count_max,
+                    personalization_instructions = EXCLUDED.personalization_instructions,
+                    production_partners = EXCLUDED.production_partners,
+                    icon_url_fullxfull = EXCLUDED.icon_url_fullxfull,
+                    taxonomy_id = EXCLUDED.taxonomy_id,
+                    updated_at = NOW()
+                """,
+                (
+                    fields["user_id"], fields["listing_id"], fields["session_id"],
+                    fields["title"], fields["url"], fields["demand"], fields["ranking"],
+                    fields["etsy_user_id"], fields["shop_id"], fields["state"], fields["description"],
+                    fields["created_at_ts"], fields["created_at"], fields["last_modified_ts"], fields["last_modified_at"],
+                    fields["image_url"], fields["image_srcset"],
+                    json.dumps(fields["tags"], ensure_ascii=False),
+                    json.dumps(fields["materials"], ensure_ascii=False),
+                    json.dumps(fields["keywords"], ensure_ascii=False),
+                    json.dumps(fields["variations"], ensure_ascii=False),
+                    fields["quantity"], fields["num_favorers"], fields["listing_type"], fields["file_data"], fields["views"],
+                    fields["price_value"], fields["price_currency"], fields["price_display"],
+                    fields["price_amount_raw"], fields["price_divisor_raw"],
+                    fields["sale_percent"], fields["sale_price_value"], fields["sale_price_display"],
+                    fields["sale_original_price"], fields["sale_original_price_display"],
+                    fields["sale_active_promotion_id"], fields["sale_active_promotion_start_ts"],
+                    fields["sale_active_promotion_end_ts"], fields["sale_active_promotion_created_ts"],
+                    fields["sale_active_promotion_updated_ts"], fields["sale_active_promotion_description"],
+                    fields["free_shipping"], fields["buyer_promotion_name"], fields["buyer_shop_promotion_name"],
+                    fields["buyer_promotion_description"], fields["buyer_applied_promotion_description"],
+                    json.dumps(fields["keyword_insights"], ensure_ascii=False),
+                    json.dumps(fields["demand_extras"], ensure_ascii=False),
+                    json.dumps(fields["shop_sections"], ensure_ascii=False),
+                    json.dumps(fields["shop_reviews"], ensure_ascii=False),
+                    json.dumps(fields["shop_languages"], ensure_ascii=False),
+                    fields["shop_created_ts"], fields["shop_created_at"], fields["shop_updated_ts"], fields["shop_updated_at"],
+                    json.dumps(fields["shop_details"], ensure_ascii=False),
+                    json.dumps(fields["reviews"], ensure_ascii=False),
+                    fields["review_count"], fields["review_average"],
+                    fields["processing_min"], fields["processing_max"],
+                    fields["who_made"], fields["when_made"],
+                    fields.get("is_personalizable"),
+                    fields.get("personalization_is_required"),
+                    fields.get("personalization_char_count_max"),
+                    fields.get("personalization_instructions") or "",
+                    json.dumps(fields.get("production_partners") or [], ensure_ascii=False),
+                    fields.get("icon_url_fullxfull") or "",
+                    fields.get("taxonomy_id"),
+                ),
+            )
+        conn.commit()
+        print(f"[db] ✅ Committed transaction for single search: listing_id={fields['listing_id']}, user_id={user_id}, session_id={session_id}", flush=True)
+        
+        # Verify the save worked
+        with conn.cursor() as verify_cur:
+            verify_cur.execute(
+                f"SELECT listing_id, user_id, session_id FROM {DB_TABLE_SINGLE_SEARCHES} WHERE user_id = %s AND listing_id = %s AND session_id = %s",
+                (user_id, fields['listing_id'], session_id)
+            )
+            verify_row = verify_cur.fetchone()
+            if verify_row:
+                print(f"[db] ✅ Verified: Entry exists in database: listing_id={verify_row[0]}, user_id={verify_row[1]}, session_id={verify_row[2]}", flush=True)
+            else:
+                print(f"[db] ⚠️ WARNING: Entry not found after commit! listing_id={fields['listing_id']}, user_id={user_id}, session_id={session_id}", flush=True)
+        
+        return {"saved": 1, "enabled": True, "listing_id": fields["listing_id"]}
+    except Exception as exc:
+        conn.rollback()
+        print(f"[db] Failed to store single search: {exc}", flush=True)
+        import traceback
+        print(f"[db] Traceback: {traceback.format_exc()}", flush=True)
+        return {"saved": 0, "enabled": True, "error": str(exc)}
+    finally:
+        conn.close()
 
 def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, session_id: str, persist_reviews: bool = False) -> Dict[str, Any]:
     cfg = _db_settings()
@@ -545,6 +1511,98 @@ def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, s
         listing_id, payload, summary = _simplify_ranked_entry(entry)
         if listing_id is None or not payload:
             continue
+        
+        # Extract sale promotion info from entry (not in payload)
+        popular = entry.get("popular_info") or entry.get("popular") or {}
+        sale_info = popular.get("sale_info") or entry.get("sale_info") or {}
+        active_promo = sale_info.get("active_promotion") or {}
+        buyer_promotion_name = (active_promo.get("buyer_promotion_name") or "")[:255]
+        buyer_shop_promotion_name = (active_promo.get("buyer_shop_promotion_name") or "")[:255]
+        buyer_promotion_description = active_promo.get("buyer_promotion_description") or ""
+        buyer_applied_promotion_description = active_promo.get("buyer_applied_promotion_description") or ""
+        sale_active_promotion_id = str(active_promo.get("id") or "")[:64]
+        sale_active_promotion_start_ts = _safe_int(active_promo.get("start_timestamp"))
+        sale_active_promotion_end_ts = _safe_int(active_promo.get("end_timestamp"))
+        sale_active_promotion_created_ts = _safe_int(active_promo.get("created_timestamp"))
+        sale_active_promotion_updated_ts = _safe_int(active_promo.get("updated_timestamp"))
+        sale_active_promotion_description = (buyer_applied_promotion_description or buyer_promotion_description or "")
+        free_shipping = sale_info.get("free_shipping")
+        if not isinstance(free_shipping, bool):
+            free_shipping = None
+        
+        # Extract sale original price
+        sale_original_price_display = sale_info.get("original_price") or ""
+        sale_original_price = None
+        try:
+            if isinstance(sale_original_price_display, str) and sale_original_price_display.strip():
+                cleaned_op = re.sub(r'[^0-9.]', '', sale_original_price_display)
+                if cleaned_op:
+                    sale_original_price = float(cleaned_op)
+        except Exception:
+            sale_original_price = None
+        
+        # Extract shop details
+        shop_obj = payload.get("shop") or {}
+        shop_details_compact = {
+            "shop_id": shop_obj.get("shop_id"),
+            "shop_name": shop_obj.get("shop_name"),
+            "user_id": shop_obj.get("user_id"),
+            "created_timestamp": shop_obj.get("created_timestamp"),
+            "created_iso": shop_obj.get("created_iso"),
+            "created": shop_obj.get("created"),
+            "updated_timestamp": shop_obj.get("updated_timestamp"),
+            "updated_iso": shop_obj.get("updated_iso"),
+            "updated": shop_obj.get("updated"),
+            "title": shop_obj.get("title"),
+            "announcement": shop_obj.get("announcement"),
+            "currency_code": shop_obj.get("currency_code"),
+            "is_vacation": shop_obj.get("is_vacation"),
+            "vacation_message": shop_obj.get("vacation_message"),
+            "sale_message": shop_obj.get("sale_message"),
+            "digital_sale_message": shop_obj.get("digital_sale_message"),
+            "listing_active_count": shop_obj.get("listing_active_count"),
+            "digital_listing_count": shop_obj.get("digital_listing_count"),
+            "login_name": shop_obj.get("login_name"),
+            "accepts_custom_requests": shop_obj.get("accepts_custom_requests"),
+            "vacation_autoreply": shop_obj.get("vacation_autoreply"),
+            "url": shop_obj.get("url"),
+            "image_url_760x100": shop_obj.get("image_url_760x100"),
+            "icon_url_fullxfull": shop_obj.get("icon_url_fullxfull"),
+            "num_favorers": shop_obj.get("num_favorers"),
+            "review_average": shop_obj.get("review_average"),
+            "review_count": shop_obj.get("review_count"),
+            "shipping_from_country_iso": shop_obj.get("shipping_from_country_iso"),
+            "transaction_sold_count": shop_obj.get("transaction_sold_count"),
+        }
+        
+        # Convert timestamps to datetime objects
+        shop_created_at = None
+        if shop_obj.get("created_timestamp"):
+            try:
+                shop_created_at = datetime.fromtimestamp(int(shop_obj.get("created_timestamp")), tz=timezone.utc)
+            except Exception:
+                pass
+        shop_updated_at = None
+        if shop_obj.get("updated_timestamp"):
+            try:
+                shop_updated_at = datetime.fromtimestamp(int(shop_obj.get("updated_timestamp")), tz=timezone.utc)
+            except Exception:
+                pass
+        
+        created_at = None
+        if payload.get("made_at_ts"):
+            try:
+                created_at = datetime.fromtimestamp(int(payload.get("made_at_ts")), tz=timezone.utc)
+            except Exception:
+                pass
+        
+        last_modified_at = None
+        if payload.get("last_modified_timestamp"):
+            try:
+                last_modified_at = datetime.fromtimestamp(int(payload.get("last_modified_timestamp")), tz=timezone.utc)
+            except Exception:
+                pass
+        
         normalized_rows.append(
             (
                 batch_id,
@@ -555,15 +1613,88 @@ def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, s
                 listing_id,
                 summary.get("ranking"),
                 summary.get("demand"),
-                summary.get("price_value"),
-                summary.get("sale_price_value"),
+                payload.get("title"),
+                payload.get("url"),
+                payload.get("user_id"),
+                payload.get("shop_id"),
+                payload.get("state"),
+                payload.get("description"),
+                payload.get("made_at_ts"),
+                created_at,
+                payload.get("last_modified_timestamp"),
+                last_modified_at,
+                payload.get("primary_image", {}).get("image_url") if isinstance(payload.get("primary_image"), dict) else None,
+                payload.get("primary_image", {}).get("srcset") if isinstance(payload.get("primary_image"), dict) else None,
+                json.dumps(payload.get("tags") or [], ensure_ascii=False),
+                json.dumps(payload.get("materials") or [], ensure_ascii=False),
+                json.dumps(payload.get("keywords") or [], ensure_ascii=False),
+                json.dumps(payload.get("variations") or [], ensure_ascii=False),
+                payload.get("quantity"),
+                payload.get("num_favorers"),
+                payload.get("listing_type") or "",
+                payload.get("file_data") or "",
+                payload.get("views"),
+                payload.get("price_value"),
+                payload.get("price_currency") or "",
+                payload.get("price_display") or "",
+                payload.get("price_amount"),
+                payload.get("price_divisor"),
+                payload.get("sale_percent"),
+                payload.get("sale_price_value"),
+                payload.get("sale_price_display") or "",
+                sale_original_price,
+                sale_original_price_display,
+                sale_active_promotion_id,
+                sale_active_promotion_start_ts,
+                sale_active_promotion_end_ts,
+                sale_active_promotion_created_ts,
+                sale_active_promotion_updated_ts,
+                sale_active_promotion_description,
+                free_shipping,
+                buyer_promotion_name,
+                buyer_shop_promotion_name,
+                buyer_promotion_description,
+                buyer_applied_promotion_description,
+                json.dumps(payload.get("keyword_insights") or [], ensure_ascii=False),
+                json.dumps(payload.get("demand_extras") or {}, ensure_ascii=False),
+                json.dumps(payload.get("sections") or [], ensure_ascii=False),
+                json.dumps(shop_obj.get("reviews") or [], ensure_ascii=False),
+                json.dumps(shop_obj.get("languages") or [], ensure_ascii=False),
+                shop_obj.get("created_timestamp"),
+                shop_created_at,
+                shop_obj.get("updated_timestamp"),
+                shop_updated_at,
+                json.dumps(shop_details_compact, ensure_ascii=False),
+                json.dumps(payload.get("reviews") or [], ensure_ascii=False),
                 summary.get("review_count"),
                 summary.get("review_average"),
-                json.dumps(payload, ensure_ascii=False),
+                payload.get("is_personalizable"),
+                payload.get("personalization_is_required"),
+                payload.get("personalization_char_count_max"),
+                payload.get("personalization_instructions") or "",
+                payload.get("processing_min"),
+                payload.get("processing_max"),
+                payload.get("who_made") or "",
+                payload.get("when_made") or "",
+                json.dumps(payload.get("production_partners") or [], ensure_ascii=False),
+                payload.get("icon_url_fullxfull") or "",
             )
         )
         if persist_reviews:
-            for rv in entry.get("reviews") or []:
+            # Get reviews from processed payload first, fallback to raw entry
+            reviews_list = payload.get("reviews") or entry.get("reviews") or []
+            if not reviews_list:
+                continue
+            
+            # Ensure listing_id is valid
+            if listing_id is None:
+                print(f"[db] ⚠️ Skipping reviews for entry with null listing_id", flush=True)
+                continue
+            
+            for rv in reviews_list:
+                if not isinstance(rv, dict):
+                    continue
+                
                 review_key = (
                     rv.get("transaction_id")
                     or rv.get("review_id")
@@ -571,10 +1702,17 @@ def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, s
                     or f"{rv.get('buyer_user_id') or 'anon'}-{rv.get('created_timestamp') or rv.get('updated_timestamp') or ''}-{listing_id}"
                 )
                 review_key = str(review_key)
+                
+                # Ensure listing_id is set (should never be None at this point, but double-check)
+                review_listing_id = listing_id
+                if review_listing_id is None:
+                    print(f"[db] ❌ ERROR: listing_id is None when saving review! review_key={review_key}", flush=True)
+                    continue
+                
                 reviews_rows.append(
                     (
                         session_id,
-                        listing_id,
+                        review_listing_id,  # Explicitly use the listing_id variable
                         review_key,
                         rv.get("buyer_user_id"),
                         rv.get("rating"),
@@ -615,23 +1753,113 @@ def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, s
                 f"""
                 INSERT INTO {DB_TABLE_ENTRIES} (
                     batch_id, session_id, user_id, keyword, keyword_slug,
-                    listing_id, ranking, demand, price_value, sale_price_value,
-                    review_count, review_average, payload
+                    listing_id, ranking, demand,
+                    title, url, etsy_user_id, shop_id, state, description,
+                    created_at_ts, created_at, last_modified_ts, last_modified_at,
+                    image_url, image_srcset, tags, materials, keywords, variations,
+                    quantity, num_favorers, listing_type, file_data, views,
+                    price_value, price_currency, price_display, price_amount_raw, price_divisor_raw,
+                    sale_percent, sale_price_value, sale_price_display, sale_original_price, sale_original_price_display,
+                    sale_active_promotion_id, sale_active_promotion_start_ts, sale_active_promotion_end_ts,
+                    sale_active_promotion_created_ts, sale_active_promotion_updated_ts, sale_active_promotion_description,
+                    free_shipping, buyer_promotion_name, buyer_shop_promotion_name,
+                    buyer_promotion_description, buyer_applied_promotion_description,
+                    keyword_insights, demand_extras, shop_sections, shop_reviews, shop_languages,
+                    shop_created_ts, shop_created_at, shop_updated_ts, shop_updated_at,
+                    shop_details, reviews, review_count, review_average,
+                    is_personalizable, personalization_is_required, personalization_char_count_max, personalization_instructions,
+                    processing_min, processing_max, who_made, when_made,
+                    production_partners, icon_url_fullxfull
                 )
                 VALUES (
                     %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
-                    %s, %s, %s
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s
                 )
                 ON CONFLICT (session_id, listing_id) DO UPDATE SET
                     batch_id = EXCLUDED.batch_id,
                     ranking = EXCLUDED.ranking,
                     demand = EXCLUDED.demand,
+                    title = EXCLUDED.title,
+                    url = EXCLUDED.url,
+                    etsy_user_id = EXCLUDED.etsy_user_id,
+                    shop_id = EXCLUDED.shop_id,
+                    state = EXCLUDED.state,
+                    description = EXCLUDED.description,
+                    created_at_ts = EXCLUDED.created_at_ts,
+                    created_at = EXCLUDED.created_at,
+                    last_modified_ts = EXCLUDED.last_modified_ts,
+                    last_modified_at = EXCLUDED.last_modified_at,
+                    image_url = EXCLUDED.image_url,
+                    image_srcset = EXCLUDED.image_srcset,
+                    tags = EXCLUDED.tags,
+                    materials = EXCLUDED.materials,
+                    keywords = EXCLUDED.keywords,
+                    variations = EXCLUDED.variations,
+                    quantity = EXCLUDED.quantity,
+                    num_favorers = EXCLUDED.num_favorers,
+                    listing_type = EXCLUDED.listing_type,
+                    file_data = EXCLUDED.file_data,
+                    views = EXCLUDED.views,
                     price_value = EXCLUDED.price_value,
+                    price_currency = EXCLUDED.price_currency,
+                    price_display = EXCLUDED.price_display,
+                    price_amount_raw = EXCLUDED.price_amount_raw,
+                    price_divisor_raw = EXCLUDED.price_divisor_raw,
+                    sale_percent = EXCLUDED.sale_percent,
                     sale_price_value = EXCLUDED.sale_price_value,
+                    sale_price_display = EXCLUDED.sale_price_display,
+                    sale_original_price = EXCLUDED.sale_original_price,
+                    sale_original_price_display = EXCLUDED.sale_original_price_display,
+                    sale_active_promotion_id = EXCLUDED.sale_active_promotion_id,
+                    sale_active_promotion_start_ts = EXCLUDED.sale_active_promotion_start_ts,
+                    sale_active_promotion_end_ts = EXCLUDED.sale_active_promotion_end_ts,
+                    sale_active_promotion_created_ts = EXCLUDED.sale_active_promotion_created_ts,
+                    sale_active_promotion_updated_ts = EXCLUDED.sale_active_promotion_updated_ts,
+                    sale_active_promotion_description = EXCLUDED.sale_active_promotion_description,
+                    free_shipping = EXCLUDED.free_shipping,
+                    buyer_promotion_name = EXCLUDED.buyer_promotion_name,
+                    buyer_shop_promotion_name = EXCLUDED.buyer_shop_promotion_name,
+                    buyer_promotion_description = EXCLUDED.buyer_promotion_description,
+                    buyer_applied_promotion_description = EXCLUDED.buyer_applied_promotion_description,
+                    keyword_insights = EXCLUDED.keyword_insights,
+                    demand_extras = EXCLUDED.demand_extras,
+                    shop_sections = EXCLUDED.shop_sections,
+                    shop_reviews = EXCLUDED.shop_reviews,
+                    shop_languages = EXCLUDED.shop_languages,
+                    shop_created_ts = EXCLUDED.shop_created_ts,
+                    shop_created_at = EXCLUDED.shop_created_at,
+                    shop_updated_ts = EXCLUDED.shop_updated_ts,
+                    shop_updated_at = EXCLUDED.shop_updated_at,
+                    shop_details = EXCLUDED.shop_details,
+                    reviews = EXCLUDED.reviews,
                     review_count = EXCLUDED.review_count,
                     review_average = EXCLUDED.review_average,
-                    payload = EXCLUDED.payload,
+                    is_personalizable = EXCLUDED.is_personalizable,
+                    personalization_is_required = EXCLUDED.personalization_is_required,
+                    personalization_char_count_max = EXCLUDED.personalization_char_count_max,
+                    personalization_instructions = EXCLUDED.personalization_instructions,
+                    processing_min = EXCLUDED.processing_min,
+                    processing_max = EXCLUDED.processing_max,
+                    who_made = EXCLUDED.who_made,
+                    when_made = EXCLUDED.when_made,
+                    production_partners = EXCLUDED.production_partners,
+                    icon_url_fullxfull = EXCLUDED.icon_url_fullxfull,
                     keyword = EXCLUDED.keyword,
                     keyword_slug = EXCLUDED.keyword_slug,
                     user_id = EXCLUDED.user_id,
@@ -640,34 +1868,46 @@ def persist_ranked_entries(doc: Dict[str, Any], *, user_id: str, keyword: str, s
                 normalized_rows,
             )
             if persist_reviews and reviews_rows:
-                cur.executemany(
-                    f"""
-                    INSERT INTO {DB_TABLE_REVIEWS} (
-                        session_id,
-                        listing_id,
-                        review_key,
-                        buyer_user_id,
-                        rating,
-                        review,
-                        created_timestamp,
-                        updated_timestamp,
-                        language,
-                        image_url_fullxfull
+                # Debug: verify listing_id is set for all reviews
+                null_listing_ids = [i for i, row in enumerate(reviews_rows) if row[1] is None]
+                if null_listing_ids:
+                    print(f"[db] ❌ ERROR: Found {len(null_listing_ids)} reviews with null listing_id at indices: {null_listing_ids[:10]}", flush=True)
+                    # Filter out reviews with null listing_id
+                    reviews_rows = [row for row in reviews_rows if row[1] is not None]
+                    print(f"[db] ⚠️ Filtered to {len(reviews_rows)} reviews with valid listing_id", flush=True)
+                
+                if reviews_rows:
+                    print(f"[db] Saving {len(reviews_rows)} reviews to {DB_TABLE_REVIEWS} (sample listing_id: {reviews_rows[0][1] if reviews_rows else 'N/A'})", flush=True)
+                    cur.executemany(
+                        f"""
+                        INSERT INTO {DB_TABLE_REVIEWS} (
+                            session_id,
+                            listing_id,
+                            review_key,
+                            buyer_user_id,
+                            rating,
+                            review,
+                            created_timestamp,
+                            updated_timestamp,
+                            language,
+                            image_url_fullxfull
+                        )
+                        VALUES (
+                            %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s
+                        )
+                        ON CONFLICT (session_id, listing_id, review_key) DO UPDATE SET
+                            buyer_user_id = EXCLUDED.buyer_user_id,
+                            rating = EXCLUDED.rating,
+                            review = EXCLUDED.review,
+                            updated_timestamp = EXCLUDED.updated_timestamp,
+                            language = EXCLUDED.language,
+                            image_url_fullxfull = EXCLUDED.image_url_fullxfull
+                        """,
+                        reviews_rows,
                     )
-                    VALUES (
-                        %s, %s, %s, %s, %s,
-                        %s, %s, %s, %s, %s
-                    )
-                    ON CONFLICT (session_id, listing_id, review_key) DO UPDATE SET
-                        buyer_user_id = EXCLUDED.buyer_user_id,
-                        rating = EXCLUDED.rating,
-                        review = EXCLUDED.review,
-                        updated_timestamp = EXCLUDED.updated_timestamp,
-                        language = EXCLUDED.language,
-                        image_url_fullxfull = EXCLUDED.image_url_fullxfull
-                    """,
-                    reviews_rows,
-                )
+                else:
+                    print(f"[db] ⚠️ No valid reviews to save (all had null listing_id)", flush=True)
             live_batch_id = f"{slug}-{session_id}-live"
             cur.execute(
                 f"DELETE FROM {DB_TABLE_BATCHES} WHERE batch_id = %s",
@@ -695,6 +1935,97 @@ def persist_entry_live(entry: Dict[str, Any], *, user_id: str, keyword: str, ses
     listing_id, payload, summary = _simplify_ranked_entry(entry)
     if listing_id is None or not payload:
         return {"saved": 0, "batch_id": None, "enabled": True}
+
+    # Extract sale promotion info from entry (not in payload)
+    popular = entry.get("popular_info") or entry.get("popular") or {}
+    sale_info = popular.get("sale_info") or entry.get("sale_info") or {}
+    active_promo = sale_info.get("active_promotion") or {}
+    buyer_promotion_name = (active_promo.get("buyer_promotion_name") or "")[:255]
+    buyer_shop_promotion_name = (active_promo.get("buyer_shop_promotion_name") or "")[:255]
+    buyer_promotion_description = active_promo.get("buyer_promotion_description") or ""
+    buyer_applied_promotion_description = active_promo.get("buyer_applied_promotion_description") or ""
+    sale_active_promotion_id = str(active_promo.get("id") or "")[:64]
+    sale_active_promotion_start_ts = _safe_int(active_promo.get("start_timestamp"))
+    sale_active_promotion_end_ts = _safe_int(active_promo.get("end_timestamp"))
+    sale_active_promotion_created_ts = _safe_int(active_promo.get("created_timestamp"))
+    sale_active_promotion_updated_ts = _safe_int(active_promo.get("updated_timestamp"))
+    sale_active_promotion_description = (buyer_applied_promotion_description or buyer_promotion_description or "")
+    free_shipping = sale_info.get("free_shipping")
+    if not isinstance(free_shipping, bool):
+        free_shipping = None
+    
+    # Extract sale original price
+    sale_original_price_display = sale_info.get("original_price") or ""
+    sale_original_price = None
+    try:
+        if isinstance(sale_original_price_display, str) and sale_original_price_display.strip():
+            cleaned_op = re.sub(r'[^0-9.]', '', sale_original_price_display)
+            if cleaned_op:
+                sale_original_price = float(cleaned_op)
+    except Exception:
+        sale_original_price = None
+    
+    # Extract shop details
+    shop_obj = payload.get("shop") or {}
+    shop_details_compact = {
+        "shop_id": shop_obj.get("shop_id"),
+        "shop_name": shop_obj.get("shop_name"),
+        "user_id": shop_obj.get("user_id"),
+        "created_timestamp": shop_obj.get("created_timestamp"),
+        "created_iso": shop_obj.get("created_iso"),
+        "created": shop_obj.get("created"),
+        "updated_timestamp": shop_obj.get("updated_timestamp"),
+        "updated_iso": shop_obj.get("updated_iso"),
+        "updated": shop_obj.get("updated"),
+        "title": shop_obj.get("title"),
+        "announcement": shop_obj.get("announcement"),
+        "currency_code": shop_obj.get("currency_code"),
+        "is_vacation": shop_obj.get("is_vacation"),
+        "vacation_message": shop_obj.get("vacation_message"),
+        "sale_message": shop_obj.get("sale_message"),
+        "digital_sale_message": shop_obj.get("digital_sale_message"),
+        "listing_active_count": shop_obj.get("listing_active_count"),
+        "digital_listing_count": shop_obj.get("digital_listing_count"),
+        "login_name": shop_obj.get("login_name"),
+        "accepts_custom_requests": shop_obj.get("accepts_custom_requests"),
+        "vacation_autoreply": shop_obj.get("vacation_autoreply"),
+        "url": shop_obj.get("url"),
+        "image_url_760x100": shop_obj.get("image_url_760x100"),
+        "icon_url_fullxfull": shop_obj.get("icon_url_fullxfull"),
+        "num_favorers": shop_obj.get("num_favorers"),
+        "review_average": shop_obj.get("review_average"),
+        "review_count": shop_obj.get("review_count"),
+        "shipping_from_country_iso": shop_obj.get("shipping_from_country_iso"),
+        "transaction_sold_count": shop_obj.get("transaction_sold_count"),
+    }
+    
+    # Convert timestamps to datetime objects
+    shop_created_at = None
+    if shop_obj.get("created_timestamp"):
+        try:
+            shop_created_at = datetime.fromtimestamp(int(shop_obj.get("created_timestamp")), tz=timezone.utc)
+        except Exception:
+            pass
+    shop_updated_at = None
+    if shop_obj.get("updated_timestamp"):
+        try:
+            shop_updated_at = datetime.fromtimestamp(int(shop_obj.get("updated_timestamp")), tz=timezone.utc)
+        except Exception:
+            pass
+    
+    created_at = None
+    if payload.get("made_at_ts"):
+        try:
+            created_at = datetime.fromtimestamp(int(payload.get("made_at_ts")), tz=timezone.utc)
+        except Exception:
+            pass
+    
+    last_modified_at = None
+    if payload.get("last_modified_timestamp"):
+        try:
+            last_modified_at = datetime.fromtimestamp(int(payload.get("last_modified_timestamp")), tz=timezone.utc)
+        except Exception:
+            pass
 
     slug = slugify_safe(keyword)
     batch_id = f"{slug}-{session_id}-live"
@@ -724,23 +2055,109 @@ def persist_entry_live(entry: Dict[str, Any], *, user_id: str, keyword: str, ses
                 f"""
                 INSERT INTO {DB_TABLE_ENTRIES} (
                     batch_id, session_id, user_id, keyword, keyword_slug,
-                    listing_id, ranking, demand, price_value, sale_price_value,
-                    review_count, review_average, payload
+                    listing_id, ranking, demand,
+                    title, url, etsy_user_id, shop_id, state, description,
+                    created_at_ts, created_at, last_modified_ts, last_modified_at,
+                    image_url, image_srcset, tags, materials, keywords, variations,
+                    quantity, num_favorers, listing_type, file_data, views,
+                    price_value, price_currency, price_display, price_amount_raw, price_divisor_raw,
+                    sale_percent, sale_price_value, sale_price_display, sale_original_price, sale_original_price_display,
+                    sale_active_promotion_id, sale_active_promotion_start_ts, sale_active_promotion_end_ts,
+                    sale_active_promotion_created_ts, sale_active_promotion_updated_ts, sale_active_promotion_description,
+                    free_shipping, buyer_promotion_name, buyer_shop_promotion_name,
+                    buyer_promotion_description, buyer_applied_promotion_description,
+                    keyword_insights, demand_extras, shop_sections, shop_reviews, shop_languages,
+                    shop_created_ts, shop_created_at, shop_updated_ts, shop_updated_at,
+                    shop_details, reviews, review_count, review_average,
+                    is_personalizable, personalization_is_required, personalization_char_count_max, personalization_instructions,
+                    processing_min, processing_max, who_made, when_made
                 )
                 VALUES (
                     %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
-                    %s, %s, %s
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s, %s,
+                    %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s,
+                    %s, %s, %s, %s
                 )
                 ON CONFLICT (session_id, listing_id) DO UPDATE SET
                     batch_id = EXCLUDED.batch_id,
                     ranking = EXCLUDED.ranking,
                     demand = EXCLUDED.demand,
+                    title = EXCLUDED.title,
+                    url = EXCLUDED.url,
+                    etsy_user_id = EXCLUDED.etsy_user_id,
+                    shop_id = EXCLUDED.shop_id,
+                    state = EXCLUDED.state,
+                    description = EXCLUDED.description,
+                    created_at_ts = EXCLUDED.created_at_ts,
+                    created_at = EXCLUDED.created_at,
+                    last_modified_ts = EXCLUDED.last_modified_ts,
+                    last_modified_at = EXCLUDED.last_modified_at,
+                    image_url = EXCLUDED.image_url,
+                    image_srcset = EXCLUDED.image_srcset,
+                    tags = EXCLUDED.tags,
+                    materials = EXCLUDED.materials,
+                    keywords = EXCLUDED.keywords,
+                    variations = EXCLUDED.variations,
+                    quantity = EXCLUDED.quantity,
+                    num_favorers = EXCLUDED.num_favorers,
+                    listing_type = EXCLUDED.listing_type,
+                    file_data = EXCLUDED.file_data,
+                    views = EXCLUDED.views,
                     price_value = EXCLUDED.price_value,
+                    price_currency = EXCLUDED.price_currency,
+                    price_display = EXCLUDED.price_display,
+                    price_amount_raw = EXCLUDED.price_amount_raw,
+                    price_divisor_raw = EXCLUDED.price_divisor_raw,
+                    sale_percent = EXCLUDED.sale_percent,
                     sale_price_value = EXCLUDED.sale_price_value,
+                    sale_price_display = EXCLUDED.sale_price_display,
+                    sale_original_price = EXCLUDED.sale_original_price,
+                    sale_original_price_display = EXCLUDED.sale_original_price_display,
+                    sale_active_promotion_id = EXCLUDED.sale_active_promotion_id,
+                    sale_active_promotion_start_ts = EXCLUDED.sale_active_promotion_start_ts,
+                    sale_active_promotion_end_ts = EXCLUDED.sale_active_promotion_end_ts,
+                    sale_active_promotion_created_ts = EXCLUDED.sale_active_promotion_created_ts,
+                    sale_active_promotion_updated_ts = EXCLUDED.sale_active_promotion_updated_ts,
+                    sale_active_promotion_description = EXCLUDED.sale_active_promotion_description,
+                    free_shipping = EXCLUDED.free_shipping,
+                    buyer_promotion_name = EXCLUDED.buyer_promotion_name,
+                    buyer_shop_promotion_name = EXCLUDED.buyer_shop_promotion_name,
+                    buyer_promotion_description = EXCLUDED.buyer_promotion_description,
+                    buyer_applied_promotion_description = EXCLUDED.buyer_applied_promotion_description,
+                    keyword_insights = EXCLUDED.keyword_insights,
+                    demand_extras = EXCLUDED.demand_extras,
+                    shop_sections = EXCLUDED.shop_sections,
+                    shop_reviews = EXCLUDED.shop_reviews,
+                    shop_languages = EXCLUDED.shop_languages,
+                    shop_created_ts = EXCLUDED.shop_created_ts,
+                    shop_created_at = EXCLUDED.shop_created_at,
+                    shop_updated_ts = EXCLUDED.shop_updated_ts,
+                    shop_updated_at = EXCLUDED.shop_updated_at,
+                    shop_details = EXCLUDED.shop_details,
+                    reviews = EXCLUDED.reviews,
                     review_count = EXCLUDED.review_count,
                     review_average = EXCLUDED.review_average,
-                    payload = EXCLUDED.payload,
+                    is_personalizable = EXCLUDED.is_personalizable,
+                    personalization_is_required = EXCLUDED.personalization_is_required,
+                    personalization_char_count_max = EXCLUDED.personalization_char_count_max,
+                    personalization_instructions = EXCLUDED.personalization_instructions,
+                    processing_min = EXCLUDED.processing_min,
+                    processing_max = EXCLUDED.processing_max,
+                    who_made = EXCLUDED.who_made,
+                    when_made = EXCLUDED.when_made,
                     keyword = EXCLUDED.keyword,
                     keyword_slug = EXCLUDED.keyword_slug,
                     user_id = EXCLUDED.user_id,
@@ -755,11 +2172,71 @@ def persist_entry_live(entry: Dict[str, Any], *, user_id: str, keyword: str, ses
                     listing_id,
                     summary.get("ranking"),
                     summary.get("demand"),
-                    summary.get("price_value"),
-                    summary.get("sale_price_value"),
+                    payload.get("title"),
+                    payload.get("url"),
+                    payload.get("user_id"),
+                    payload.get("shop_id"),
+                    payload.get("state"),
+                    payload.get("description"),
+                    payload.get("made_at_ts"),
+                    created_at,
+                    payload.get("last_modified_timestamp"),
+                    last_modified_at,
+                    payload.get("primary_image", {}).get("image_url") if isinstance(payload.get("primary_image"), dict) else None,
+                    payload.get("primary_image", {}).get("srcset") if isinstance(payload.get("primary_image"), dict) else None,
+                    json.dumps(payload.get("tags") or [], ensure_ascii=False),
+                    json.dumps(payload.get("materials") or [], ensure_ascii=False),
+                    json.dumps(payload.get("keywords") or [], ensure_ascii=False),
+                    json.dumps(payload.get("variations") or [], ensure_ascii=False),
+                    payload.get("quantity"),
+                    payload.get("num_favorers"),
+                    payload.get("listing_type") or "",
+                    payload.get("file_data") or "",
+                    payload.get("views"),
+                    payload.get("price_value"),
+                    payload.get("price_currency") or "",
+                    payload.get("price_display") or "",
+                    payload.get("price_amount"),
+                    payload.get("price_divisor"),
+                    payload.get("sale_percent"),
+                    payload.get("sale_price_value"),
+                    payload.get("sale_price_display") or "",
+                    sale_original_price,
+                    sale_original_price_display,
+                    sale_active_promotion_id,
+                    sale_active_promotion_start_ts,
+                    sale_active_promotion_end_ts,
+                    sale_active_promotion_created_ts,
+                    sale_active_promotion_updated_ts,
+                    sale_active_promotion_description,
+                    free_shipping,
+                    buyer_promotion_name,
+                    buyer_shop_promotion_name,
+                    buyer_promotion_description,
+                    buyer_applied_promotion_description,
+                    json.dumps(payload.get("keyword_insights") or [], ensure_ascii=False),
+                    json.dumps(payload.get("demand_extras") or {}, ensure_ascii=False),
+                    json.dumps(payload.get("sections") or [], ensure_ascii=False),
+                    json.dumps(shop_obj.get("reviews") or [], ensure_ascii=False),
+                    json.dumps(shop_obj.get("languages") or [], ensure_ascii=False),
+                    shop_obj.get("created_timestamp"),
+                    shop_created_at,
+                    shop_obj.get("updated_timestamp"),
+                    shop_updated_at,
+                    json.dumps(shop_details_compact, ensure_ascii=False),
+                    json.dumps(payload.get("reviews") or [], ensure_ascii=False),
                     summary.get("review_count"),
                     summary.get("review_average"),
-                    json.dumps(payload, ensure_ascii=False),
+                    payload.get("is_personalizable"),
+                    payload.get("personalization_is_required"),
+                    payload.get("personalization_char_count_max"),
+                    payload.get("personalization_instructions") or "",
+                    payload.get("processing_min"),
+                    payload.get("processing_max"),
+                    payload.get("who_made") or "",
+                    payload.get("when_made") or "",
+                    json.dumps(payload.get("production_partners") or [], ensure_ascii=False),
+                    payload.get("icon_url_fullxfull") or "",
                 ),
             )
         conn.commit()
@@ -824,27 +2301,308 @@ app = FastAPI(title="AI Keywords Etsy API", version="1.2.0")
 @app.post("/single-search")
 async def api_single_search(payload: SingleSearchRequest):
     """
-    Normal single search:
-    - Creates outputs/single_search_{listing_id}_{ts}/outputs/popular_listings_full_pdf.json
-    - On success: return the compiled JSON directly (no wrapper)
-    - Also organizes session meta using user_id/session_id on the server
+    Single search - saves to Railway database:
+    - Compiles the listing with all details (demand, keywords, everbee, etc.)
+    - Enriches with full listing details and reviews
+    - Saves to database (same structure as bulk search)
+    - Returns completion message with Railway location info for UI retrieval
     """
+    listing_id = int(payload.listing_id)
+    user_id = payload.user_id.strip()
+    session_id = payload.session_id.strip()
+    
+    print(f"[single-search] Starting single search for listing_id={listing_id}, user_id={user_id}, session_id={session_id}", flush=True)
+    
     loop = asyncio.get_running_loop()
     try:
+        # Compile the single listing
+        print(f"[single-search] Compiling listing {listing_id}...", flush=True)
         compiled = await loop.run_in_executor(
             EXECUTOR,
             ss.run_single_search,
-            int(payload.listing_id),
-            payload.session_id,
+            listing_id,
+            session_id,
             payload.forced_personalize,
         )
+        print(f"[single-search] ✅ Listing {listing_id} compiled successfully", flush=True)
+
+        # Convert compiled result to megafile entry format (raw entry)
+        raw_entry = ss._to_megafile_entry(compiled)
+        print(f"[single-search] Converted to megafile entry format", flush=True)
+        
+        # Debug: Check if price is in the raw entry from compiled result
+        initial_price = raw_entry.get("popular_info", {}).get("price") if isinstance(raw_entry.get("popular_info"), dict) else None
+        if initial_price:
+            print(f"[single-search] 🔍 Initial price from compiled result: {initial_price}", flush=True)
+        else:
+            print(f"[single-search] ⚠️ WARNING: No price in raw_entry.popular_info from compiled result!", flush=True)
+            print(f"[single-search] 🔍 popular_info type: {type(raw_entry.get('popular_info'))}, keys: {list(raw_entry.get('popular_info', {}).keys()) if isinstance(raw_entry.get('popular_info'), dict) else 'N/A'}", flush=True)
+        
+        # Enrich with listing details and reviews (like bulk search does)
+        if listing_id:
+            print(f"[single-search] Enriching listing {listing_id} with details and reviews...", flush=True)
+            try:
+                snapshot = etsy.collect_listing_detail_and_reviews(listing_id, reviews_limit=100)
+                detail = snapshot.get("detail")
+                if detail is not None:
+                    raw_entry["listing_details"] = detail
+                    # Merge detail into popular_info so _simplify_ranked_entry can access it (including tags, materials, etc.)
+                    # BUT preserve existing primary_image and price from compiled result (they're already properly formatted)
+                    existing_primary_image = raw_entry.get("primary_image")
+                    
+                    # Get existing popular_info and extract price BEFORE any updates
+                    existing_popular_info = raw_entry.get("popular_info") or {}
+                    existing_price = existing_popular_info.get("price")
+                    
+                    # Debug: log what we have before merging
+                    if existing_price:
+                        print(f"[single-search] 🔍 Existing price BEFORE merge: {existing_price}", flush=True)
+                    else:
+                        print(f"[single-search] ⚠️ No existing price found in popular_info before merge", flush=True)
+                    
+                    # Check if detail has a price that might overwrite ours
+                    detail_price = detail.get("price") if isinstance(detail, dict) else None
+                    if detail_price:
+                        print(f"[single-search] 🔍 Detail has price: {detail_price} (will be overwritten with existing)", flush=True)
+                    
+                    if not isinstance(raw_entry.get("popular_info"), dict):
+                        raw_entry["popular_info"] = {}
+                    
+                    # Merge detail into popular_info (this might overwrite price)
+                    raw_entry["popular_info"].update(detail)
+                    
+                    # ALWAYS restore price from compiled result (it's the source of truth)
+                    # Check both existing_price and what's currently in popular_info after merge
+                    price_after_merge = raw_entry.get("popular_info", {}).get("price")
+                    
+                    if existing_price and isinstance(existing_price, dict):
+                        # Restore the original price from compiled result
+                        raw_entry["popular_info"]["price"] = existing_price
+                        print(f"[single-search] ✅ Price restored from compiled: amount={existing_price.get('amount')}, divisor={existing_price.get('divisor')}, currency={existing_price.get('currency_code')}", flush=True)
+                    elif price_after_merge and isinstance(price_after_merge, dict):
+                        # Price from detail might be okay, but normalize it to ensure it has the right structure
+                        normalized_detail_price = {
+                            "amount": price_after_merge.get("amount") or price_after_merge.get("price_amount"),
+                            "divisor": price_after_merge.get("divisor") or price_after_merge.get("price_divisor") or 100,
+                            "currency_code": price_after_merge.get("currency_code") or price_after_merge.get("currency") or price_after_merge.get("price_currency") or "",
+                        }
+                        # Only use if it has at least amount
+                        if normalized_detail_price.get("amount") is not None:
+                            raw_entry["popular_info"]["price"] = normalized_detail_price
+                            print(f"[single-search] ⚠️ Using normalized price from detail: {normalized_detail_price}", flush=True)
+                        else:
+                            print(f"[single-search] ❌ Price from detail is invalid: {price_after_merge}", flush=True)
+                    else:
+                        # No price at all - this is a problem
+                        print(f"[single-search] ❌ ERROR: No price found! existing_price={existing_price}, price_after_merge={price_after_merge}", flush=True)
+                        print(f"[single-search] 🔍 Debug: popular_info keys: {list(raw_entry.get('popular_info', {}).keys())}", flush=True)
+                        # Try to extract from listing_details as last resort
+                        listing_details_price = raw_entry.get("listing_details", {}).get("price") if isinstance(raw_entry.get("listing_details"), dict) else None
+                        if listing_details_price and isinstance(listing_details_price, dict):
+                            normalized = {
+                                "amount": listing_details_price.get("amount"),
+                                "divisor": listing_details_price.get("divisor") or 100,
+                                "currency_code": listing_details_price.get("currency_code") or "",
+                            }
+                            if normalized.get("amount") is not None:
+                                raw_entry["popular_info"]["price"] = normalized
+                                print(f"[single-search] ✅ Extracted price from listing_details as fallback: {normalized}", flush=True)
+                    
+                    # Restore primary_image if it was overwritten (preserve the properly formatted one from compiled)
+                    if existing_primary_image:
+                        raw_entry["primary_image"] = existing_primary_image
+                        # Also ensure it's in popular_info for _simplify_ranked_entry
+                        raw_entry["popular_info"]["primary_image"] = existing_primary_image
+                    
+                    print(f"[single-search] ✅ Listing details fetched and merged into popular_info (primary_image and price preserved)", flush=True)
+                else:
+                    print(f"[single-search] ⚠️ No listing details returned from API", flush=True)
+                
+                # First, check if we have reviews from the compiled result (shop.reviews)
+                # These have all the correct fields (shop_id, listing_id, transaction_id, buyer_user_id)
+                existing_shop = raw_entry.get("shop") or {}
+                existing_shop_reviews = existing_shop.get("reviews") or []
+                
+                # Filter reviews to only include ones for this listing_id
+                compiled_reviews_for_listing = []
+                if existing_shop_reviews and listing_id:
+                    for rv in existing_shop_reviews:
+                        if isinstance(rv, dict):
+                            rv_listing_id = rv.get("listing_id")
+                            # Include review if it matches this listing_id or if listing_id is not specified
+                            if rv_listing_id is None or int(rv_listing_id) == int(listing_id):
+                                compiled_reviews_for_listing.append(rv)
+                
+                print(f"[single-search] 🔍 Found {len(compiled_reviews_for_listing)} reviews from compiled result for listing_id={listing_id}", flush=True)
+                
+                # Get API reviews as supplement
+                api_reviews = snapshot.get("reviews")
+                if api_reviews is not None:
+                    raw_entry["listing_reviews"] = api_reviews
+                    print(f"[single-search] ✅ Fetched {len(api_reviews)} reviews from API", flush=True)
+                
+                # Use compiled reviews if available (they have all the correct fields), otherwise use API reviews
+                if compiled_reviews_for_listing:
+                    # Use compiled reviews - they already have shop_id, listing_id, transaction_id, buyer_user_id
+                    final_reviews = compiled_reviews_for_listing
+                    print(f"[single-search] ✅ Using {len(final_reviews)} reviews from compiled result (with all fields)", flush=True)
+                elif api_reviews:
+                    # Fallback to API reviews, but ensure we add listing_id and shop_id
+                    formatted_reviews = []
+                    shop_id = raw_entry.get("shop_id") or existing_shop.get("shop_id") or existing_shop.get("details", {}).get("shop_id")
+                    for rv in api_reviews:
+                        if isinstance(rv, dict):
+                            formatted_reviews.append({
+                                "shop_id": shop_id,  # Add shop_id
+                                "listing_id": listing_id,  # Add listing_id
+                                "transaction_id": rv.get("transaction_id"),
+                                "review_id": rv.get("review_id") or rv.get("id"),
+                                "buyer_user_id": rv.get("buyer_user_id") or rv.get("buyerUserId") or rv.get("author_id"),
+                                "rating": rv.get("rating"),
+                                "review": rv.get("review") or rv.get("review_text") or rv.get("text"),
+                                "created_timestamp": rv.get("created_timestamp") or rv.get("create_timestamp") or rv.get("createdAt"),
+                                "updated_timestamp": rv.get("updated_timestamp") or rv.get("update_timestamp") or rv.get("updatedAt"),
+                                "language": rv.get("language") or rv.get("review_language") or rv.get("locale"),
+                                "image_url_fullxfull": rv.get("image_url_fullxfull") or rv.get("image") or rv.get("photo"),
+                            })
+                    final_reviews = formatted_reviews
+                    print(f"[single-search] ⚠️ Using {len(final_reviews)} reviews from API (fallback, added listing_id and shop_id)", flush=True)
+                else:
+                    final_reviews = []
+                    print(f"[single-search] ⚠️ No reviews available from compiled result or API", flush=True)
+                
+                # Set reviews in both places
+                raw_entry["reviews"] = final_reviews
+                if not isinstance(raw_entry.get("shop"), dict):
+                    raw_entry["shop"] = {}
+                raw_entry["shop"]["reviews"] = final_reviews
+            except Exception as enrich_err:
+                print(f"[single-search] ❌ Failed to enrich listing_id={listing_id}: {enrich_err}", flush=True)
+
+        # Normalize primary_image format if needed (ensure it has image_url and srcset)
+        primary_img_raw = raw_entry.get("primary_image") or raw_entry.get("popular_info", {}).get("primary_image")
+        if primary_img_raw and isinstance(primary_img_raw, dict):
+            # If it doesn't have image_url/srcset, try to convert from other formats
+            if not primary_img_raw.get("image_url") and not primary_img_raw.get("srcset"):
+                # Try to extract from url_full, url_300x300, etc.
+                image_url = primary_img_raw.get("image_url") or primary_img_raw.get("url_full") or primary_img_raw.get("url_300x300") or primary_img_raw.get("url")
+                srcset = primary_img_raw.get("srcset")
+                if image_url and not srcset:
+                    # Generate a basic srcset if we have image_url but no srcset
+                    srcset = image_url
+                if image_url:
+                    normalized_img = {
+                        "image_url": image_url,
+                        "srcset": srcset or image_url,
+                    }
+                    # Preserve other fields
+                    for key in ["listing_id", "image_id", "width", "height"]:
+                        if key in primary_img_raw:
+                            normalized_img[key] = primary_img_raw[key]
+                    raw_entry["primary_image"] = normalized_img
+                    if isinstance(raw_entry.get("popular_info"), dict):
+                        raw_entry["popular_info"]["primary_image"] = normalized_img
+                    print(f"[single-search] ✅ Normalized primary_image format: image_url={image_url[:50] if image_url else None}...", flush=True)
+
+        # Debug: verify price is in popular_info before processing
+        popular_info_price = raw_entry.get("popular_info", {}).get("price")
+        if popular_info_price:
+            print(f"[single-search] 🔍 Price in popular_info BEFORE _simplify_ranked_entry: {popular_info_price}", flush=True)
+        else:
+            print(f"[single-search] ⚠️ WARNING: No price in popular_info before processing! popular_info keys: {list(raw_entry.get('popular_info', {}).keys())}", flush=True)
+        
+        # Process entry through _simplify_ranked_entry to get fully processed payload (like bulk search)
+        # This ensures all data is processed, not raw - including primary_image extraction and formatting
+        print(f"[single-search] Processing entry through _simplify_ranked_entry (ensures all data is processed, not raw)...", flush=True)
+        processed_listing_id, processed_payload, processed_summary = _simplify_ranked_entry(raw_entry)
+        
+        if processed_listing_id is None or not processed_payload:
+            print(f"[single-search] ❌ Failed to process entry - listing_id or payload missing", flush=True)
+            return JSONResponse(content={
+                "success": False,
+                "error": "Failed to process entry data",
+                "listing_id": listing_id,
+            }, status_code=500)
+        
+        # Verify primary_image was processed
+        primary_img = processed_payload.get("primary_image")
+        if primary_img:
+            print(f"[single-search] ✅ Primary image processed: image_url={primary_img.get('image_url')}, srcset={primary_img.get('srcset')}", flush=True)
+        else:
+            print(f"[single-search] ⚠️ No primary_image in processed payload", flush=True)
+        
+        # Verify price was processed
+        price_value = processed_payload.get("price_value")
+        price_display = processed_payload.get("price_display")
+        price_amount = processed_payload.get("price_amount")
+        price_divisor = processed_payload.get("price_divisor")
+        price_currency = processed_payload.get("price_currency")
+        if price_value is not None:
+            print(f"[single-search] ✅ Price processed: value={price_value}, display={price_display}, amount={price_amount}, divisor={price_divisor}, currency={price_currency}", flush=True)
+        else:
+            print(f"[single-search] ⚠️ No price_value in processed payload (amount={price_amount}, divisor={price_divisor}, currency={price_currency})", flush=True)
+        
+        # Create processed entry for persistence
+        # IMPORTANT: persist_ranked_entries will call _simplify_ranked_entry again,
+        # so we need to preserve popular_info (with price) for that second call
+        processed_entry = {
+            "listing_id": processed_listing_id,
+            **processed_payload,  # All processed data from _simplify_ranked_entry
+            # Preserve popular_info so persist_ranked_entries can extract price again
+            "popular_info": raw_entry.get("popular_info", {}),
+            # Also preserve other fields that _simplify_ranked_entry might need
+            "sale_info": raw_entry.get("sale_info"),
+            "variations_cleaned": raw_entry.get("variations_cleaned"),
+        }
+        
+        print(f"[single-search] ✅ Entry processed - image: {bool(primary_img)}, shop: {bool(processed_payload.get('shop'))}, reviews: {len(processed_payload.get('reviews') or [])}", flush=True)
+        print(f"[single-search] 🔍 Preserved popular_info.price for persist_ranked_entries: {processed_entry.get('popular_info', {}).get('price')}", flush=True)
+
+        # Create megafile document structure for persistence (using processed entry)
+        megafile_doc = {
+            "entries": [processed_entry],
+            "meta": {
+                "processed_total": 1,
+                "popular_count": 1,
+                "keyword_slug": f"single-{listing_id}",
+            }
+        }
+
+        # Save to database (single_searches table matching Django model)
+        print(f"[single-search] Saving to Railway database (table: {DB_TABLE_SINGLE_SEARCHES})...", flush=True)
+        
+        # Extract etsy_user_id from the entry
+        etsy_user_id = processed_entry.get("popular_info", {}).get("user_id") or processed_entry.get("user_id")
+        
+        persist_info = persist_single_search(
+            processed_entry,
+            user_id=user_id,
+            session_id=session_id,
+            etsy_user_id=str(etsy_user_id) if etsy_user_id else None,
+        )
+        
+        saved_count = persist_info.get("saved", 0)
+        db_enabled = persist_info.get("enabled", False)
+        
+        if saved_count > 0:
+            print(f"[single-search] ✅ Saved to Railway database:", flush=True)
+            print(f"  - Table: {DB_TABLE_SINGLE_SEARCHES}", flush=True)
+            print(f"  - Session ID: {session_id}", flush=True)
+            print(f"  - Listing ID: {listing_id}", flush=True)
+            print(f"  - User ID: {user_id}", flush=True)
+            print(f"  - Retrieval: GET /single-search/{listing_id}?user_id={user_id}&session_id={session_id}", flush=True)
+        else:
+            error = persist_info.get("error")
+            print(f"[single-search] ⚠️ Database save returned: saved={saved_count}, enabled={db_enabled}", flush=True)
+            if error:
+                print(f"[single-search] ⚠️ Error: {error}", flush=True)
 
         # Organize session meta for this single-search run (non-fatal)
         try:
             meta = compiled.get("meta") or {}
             update_session_meta_file(
-                payload.user_id,
-                payload.session_id,
+                user_id,
+                session_id,
                 run_root_dir=meta.get("run_dir"),
                 outputs_dir=meta.get("outputs_dir"),
                 last_action="single_search",
@@ -853,12 +2611,47 @@ async def api_single_search(payload: SingleSearchRequest):
                 timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
             )
         except Exception as meta_err:
-            print(f"[single-search] Failed to update session meta: {meta_err}", flush=True)
+            print(f"[single-search] ⚠️ Failed to update session meta: {meta_err}", flush=True)
 
-        # Return the raw compiled JSON, exactly as generated
-        return JSONResponse(content=compiled)
+        print(f"[single-search] ✅ Single search completed for listing_id={listing_id}", flush=True)
+        
+        # Build exact location information for UI
+        base_url = os.getenv("API_BASE_URL", "http://localhost:8000")
+        retrieval_url = f"{base_url}/single-search/{listing_id}?user_id={user_id}&session_id={session_id}"
+        curl_command = f'curl -X GET "{retrieval_url}"'
+        
+        # Return completion message with exact location details
+        return JSONResponse(content={
+            "success": True,
+            "status": "completed",
+            "message": "Single search completed and saved to Railway database",
+            "listing_id": listing_id,
+            "session_id": session_id,
+            "user_id": user_id,
+            "entries_saved": saved_count,
+            "db_enabled": db_enabled,
+            "source": "db",
+            "railway": {
+                "table": DB_TABLE_SINGLE_SEARCHES,
+                "session_id": session_id,
+                "listing_id": listing_id,
+                "user_id": user_id,
+                "retrieval": {
+                    "method": "GET",
+                    "url": retrieval_url,
+                    "curl_command": curl_command,
+                    "endpoint": f"/single-search/{listing_id}",
+                    "query_params": {
+                        "user_id": user_id,
+                        "session_id": session_id,
+                    },
+                },
+            },
+        })
     except Exception as e:
-        # Keep a simple error wrapper for failures
+        print(f"[single-search] ❌ Error: {e}", flush=True)
+        import traceback
+        print(f"[single-search] Traceback: {traceback.format_exc()}", flush=True)
         return JSONResponse(content={"success": False, "error": str(e)}, status_code=500)
 
 
@@ -1422,6 +3215,284 @@ def download_status() -> Dict:
         "success": True,
         "progress": download_progress,
     }
+
+@app.get("/single-search/{listing_id}")
+def get_single_search(listing_id: int, user_id: str, session_id: str) -> Dict:
+    """
+    Retrieve single search from Railway database (single_searches table).
+    Returns all fields matching Django SingleSearch model structure.
+    """
+    print(f"[single-search] GET request: listing_id={listing_id}, user_id={user_id}, session_id={session_id}", flush=True)
+    
+    cfg = _db_settings()
+    if not cfg:
+        return {
+            "success": False,
+            "error": "Database not configured",
+            "listing_id": listing_id,
+            "session_id": session_id,
+            "railway_table": DB_TABLE_SINGLE_SEARCHES,
+        }
+    
+    conn = _db_connect()
+    if conn is None:
+        return {
+            "success": False,
+            "error": "Database connection failed",
+            "listing_id": listing_id,
+            "session_id": session_id,
+            "railway_table": DB_TABLE_SINGLE_SEARCHES,
+        }
+    
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT 
+                    listing_id, title, url, demand, ranking,
+                    etsy_user_id, shop_id, state, description,
+                    created_at_ts, created_at, last_modified_ts, last_modified_at,
+                    image_url, image_srcset, tags, materials, keywords, variations,
+                    quantity, num_favorers, listing_type, file_data, views,
+                    price_value, price_currency, price_display, price_amount_raw, price_divisor_raw,
+                    sale_percent, sale_price_value, sale_price_display,
+                    sale_original_price, sale_original_price_display,
+                    sale_active_promotion_id, sale_active_promotion_start_ts,
+                    sale_active_promotion_end_ts, sale_active_promotion_created_ts,
+                    sale_active_promotion_updated_ts, sale_active_promotion_description,
+                    free_shipping, buyer_promotion_name, buyer_shop_promotion_name,
+                    buyer_promotion_description, buyer_applied_promotion_description,
+                    keyword_insights, demand_extras,
+                    shop_sections, shop_reviews, shop_languages,
+                    shop_created_ts, shop_created_at, shop_updated_ts, shop_updated_at,
+                    shop_details, reviews, review_count, review_average,
+                    processing_min, processing_max, who_made, when_made,
+                    is_personalizable, personalization_is_required, personalization_char_count_max, personalization_instructions,
+                    production_partners, icon_url_fullxfull,
+                    updated_at
+                FROM {DB_TABLE_SINGLE_SEARCHES}
+                WHERE user_id = %s AND listing_id = %s AND session_id = %s
+                ORDER BY updated_at DESC
+                LIMIT 1
+                """,
+                (user_id, str(listing_id), session_id),
+            )
+            row = cur.fetchone()
+            if not row:
+                # Try to find what's actually in the database for debugging
+                cur.execute(
+                    f"""
+                    SELECT listing_id, user_id, session_id, updated_at
+                    FROM {DB_TABLE_SINGLE_SEARCHES}
+                    WHERE listing_id = %s OR user_id = %s OR session_id = %s
+                    ORDER BY updated_at DESC
+                    LIMIT 5
+                    """,
+                    (str(listing_id), user_id, session_id),
+                )
+                debug_rows = cur.fetchall()
+                print(f"[single-search] ❌ Entry not found: listing_id={listing_id}, user_id={user_id}, session_id={session_id}", flush=True)
+                print(f"[single-search] 🔍 Debug: Found {len(debug_rows)} similar rows in database:", flush=True)
+                for dr in debug_rows:
+                    print(f"[single-search] 🔍   - listing_id={dr[0]}, user_id={dr[1]}, session_id={dr[2]}, updated_at={dr[3]}", flush=True)
+                return {
+                    "success": False,
+                    "error": "Entry not found",
+                    "listing_id": listing_id,
+                    "session_id": session_id,
+                    "user_id": user_id,
+                    "railway_table": DB_TABLE_SINGLE_SEARCHES,
+                    "debug": {
+                        "query_listing_id": str(listing_id),
+                        "query_user_id": user_id,
+                        "query_session_id": session_id,
+                        "similar_rows_found": len(debug_rows),
+                    },
+                }
+            
+            print(f"[single-search] ✅ Retrieved entry from Railway (single_searches table)", flush=True)
+            
+            # Build response matching Django model structure
+            return {
+                "success": True,
+                "listing_id": row[0],
+                "title": row[1],
+                "url": row[2],
+                "demand": row[3],
+                "ranking": row[4],
+                "etsy_user_id": row[5],
+                "shop_id": row[6],
+                "state": row[7],
+                "description": row[8],
+                "created_at_ts": row[9],
+                "created_at": row[10].isoformat() if row[10] else None,
+                "last_modified_ts": row[11],
+                "last_modified_at": row[12].isoformat() if row[12] else None,
+                "image_url": row[13],
+                "image_srcset": row[14],
+                "tags": row[15],
+                "materials": row[16],
+                "keywords": row[17],
+                "variations": row[18],
+                "quantity": row[19],
+                "num_favorers": row[20],
+                "listing_type": row[21],
+                "file_data": row[22],
+                "views": row[23],
+                "price_value": row[24],
+                "price_currency": row[25],
+                "price_display": row[26],
+                "price_amount_raw": row[27],
+                "price_divisor_raw": row[28],
+                "sale_percent": row[29],
+                "sale_price_value": row[30],
+                "sale_price_display": row[31],
+                "sale_original_price": row[32],
+                "sale_original_price_display": row[33],
+                "sale_active_promotion_id": row[34],
+                "sale_active_promotion_start_ts": row[35],
+                "sale_active_promotion_end_ts": row[36],
+                "sale_active_promotion_created_ts": row[37],
+                "sale_active_promotion_updated_ts": row[38],
+                "sale_active_promotion_description": row[39],
+                "free_shipping": row[40],
+                "buyer_promotion_name": row[41],
+                "buyer_shop_promotion_name": row[42],
+                "buyer_promotion_description": row[43],
+                "buyer_applied_promotion_description": row[44],
+                "keyword_insights": row[45],
+                "demand_extras": row[46],
+                "shop_sections": row[47],
+                "shop_reviews": row[48],
+                "shop_languages": row[49],
+                "shop_created_ts": row[50],
+                "shop_created_at": row[51].isoformat() if row[51] else None,
+                "shop_updated_ts": row[52],
+                "shop_updated_at": row[53].isoformat() if row[53] else None,
+                "shop_details": row[54],
+                "reviews": row[55],
+                "review_count": row[56],
+                "review_average": row[57],
+                "processing_min": row[58],
+                "processing_max": row[59],
+                "who_made": row[60],
+                "when_made": row[61],
+                "is_personalizable": row[62],
+                "personalization_is_required": row[63],
+                "personalization_char_count_max": row[64],
+                "personalization_instructions": row[65],
+                "production_partners": row[66],
+                "icon_url_fullxfull": row[67],
+                "updated_at": row[68].isoformat() if row[68] else None,
+                "railway": {
+                    "table": DB_TABLE_SINGLE_SEARCHES,
+                    "user_id": user_id,
+                    "session_id": session_id,
+                },
+            }
+    except Exception as e:
+        print(f"[single-search] ❌ Error retrieving entry: {e}", flush=True)
+        import traceback
+        print(f"[single-search] Traceback: {traceback.format_exc()}", flush=True)
+        return {
+            "success": False,
+            "error": str(e),
+            "listing_id": listing_id,
+            "session_id": session_id,
+            "user_id": user_id,
+            "railway_table": DB_TABLE_SINGLE_SEARCHES,
+        }
+    finally:
+        conn.close()
+
+@app.get("/db-diagnostics")
+def db_diagnostics() -> Dict:
+    """
+    Diagnostic endpoint to check database connection and table status.
+    """
+    cfg = _db_settings()
+    if not cfg:
+        return {
+            "success": False,
+            "error": "Database not configured",
+            "env_vars_checked": ["DB_URL", "DATABASE_URL", "RAILWAY_DATABASE_URL"],
+        }
+    
+    conn = _db_connect()
+    if conn is None:
+        return {
+            "success": False,
+            "error": "Failed to connect to database",
+            "config_exists": True,
+        }
+    
+    try:
+        with conn.cursor() as cur:
+            # Check if tables exist
+            cur.execute("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public'
+                ORDER BY table_name
+            """)
+            tables = [row[0] for row in cur.fetchall()]
+            
+            # Count rows in each table
+            table_counts = {}
+            for table in [DB_TABLE_BATCHES, DB_TABLE_ENTRIES, DB_TABLE_REVIEWS, DB_TABLE_SINGLE_SEARCHES]:
+                try:
+                    cur.execute(f"SELECT COUNT(*) FROM {table}")
+                    count = cur.fetchone()[0]
+                    table_counts[table] = count
+                except Exception as e:
+                    table_counts[table] = f"ERROR: {str(e)}"
+            
+            # Check recent entries
+            recent_entries = {}
+            try:
+                cur.execute(f"""
+                    SELECT listing_id, user_id, session_id, updated_at 
+                    FROM {DB_TABLE_SINGLE_SEARCHES} 
+                    ORDER BY updated_at DESC 
+                    LIMIT 5
+                """)
+                recent_entries["single_searches"] = [
+                    {"listing_id": row[0], "user_id": row[1], "session_id": row[2], "updated_at": str(row[3])}
+                    for row in cur.fetchall()
+                ]
+            except Exception as e:
+                recent_entries["single_searches"] = f"ERROR: {str(e)}"
+            
+            try:
+                cur.execute(f"""
+                    SELECT listing_id, user_id, session_id, updated_at 
+                    FROM {DB_TABLE_ENTRIES} 
+                    ORDER BY updated_at DESC 
+                    LIMIT 5
+                """)
+                recent_entries["ranked_entries"] = [
+                    {"listing_id": row[0], "user_id": row[1], "session_id": row[2], "updated_at": str(row[3])}
+                    for row in cur.fetchall()
+                ]
+            except Exception as e:
+                recent_entries["ranked_entries"] = f"ERROR: {str(e)}"
+            
+            return {
+                "success": True,
+                "database_connected": True,
+                "tables_found": tables,
+                "table_counts": table_counts,
+                "recent_entries": recent_entries,
+                "expected_tables": [DB_TABLE_BATCHES, DB_TABLE_ENTRIES, DB_TABLE_REVIEWS, DB_TABLE_SINGLE_SEARCHES],
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "database_connected": True,
+        }
+    finally:
+        conn.close()
 
 @app.get("/status")
 def get_status(user_id: str, session_id: str) -> Dict:

@@ -1,0 +1,3598 @@
+{
+    "products": [
+        {
+            "product_id": 22607195172,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335027,
+                    "quantity": 894,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300107
+                    ],
+                    "values": [
+                        "F1"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765879,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546888,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300137
+                    ],
+                    "values": [
+                        "F2"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765881,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335031,
+                    "quantity": 987,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300181
+                    ],
+                    "values": [
+                        "F3"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195176,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546892,
+                    "quantity": 984,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300237
+                    ],
+                    "values": [
+                        "F4"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765883,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546894,
+                    "quantity": 951,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        99620268284
+                    ],
+                    "values": [
+                        "F5"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195178,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335033,
+                    "quantity": 996,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679563
+                    ],
+                    "values": [
+                        "F6"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195180,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546896,
+                    "quantity": 989,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679633
+                    ],
+                    "values": [
+                        "F7"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765885,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546898,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679687
+                    ],
+                    "values": [
+                        "F8"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765887,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335035,
+                    "quantity": 975,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679787
+                    ],
+                    "values": [
+                        "F9"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765889,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335037,
+                    "quantity": 981,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680005
+                    ],
+                    "values": [
+                        "F10"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765891,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335039,
+                    "quantity": 994,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680249
+                    ],
+                    "values": [
+                        "F11"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195182,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546900,
+                    "quantity": 963,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        174776482552
+                    ],
+                    "values": [
+                        "F12"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 27704436046,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 27620128778,
+                    "quantity": 995,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 1000,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        493810202524
+                    ],
+                    "values": [
+                        "Flash Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        1418058874187
+                    ],
+                    "values": [
+                        "Only one png photo"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195184,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335041,
+                    "quantity": 894,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300107
+                    ],
+                    "values": [
+                        "F1"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195186,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335043,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300137
+                    ],
+                    "values": [
+                        "F2"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765895,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335045,
+                    "quantity": 987,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300181
+                    ],
+                    "values": [
+                        "F3"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195188,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546904,
+                    "quantity": 984,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300237
+                    ],
+                    "values": [
+                        "F4"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195190,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546906,
+                    "quantity": 951,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        99620268284
+                    ],
+                    "values": [
+                        "F5"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195192,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335049,
+                    "quantity": 996,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679563
+                    ],
+                    "values": [
+                        "F6"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195194,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546908,
+                    "quantity": 989,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679633
+                    ],
+                    "values": [
+                        "F7"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195196,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546910,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679687
+                    ],
+                    "values": [
+                        "F8"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195198,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335051,
+                    "quantity": 975,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679787
+                    ],
+                    "values": [
+                        "F9"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765899,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335053,
+                    "quantity": 981,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680005
+                    ],
+                    "values": [
+                        "F10"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765901,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546912,
+                    "quantity": 994,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680249
+                    ],
+                    "values": [
+                        "F11"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195200,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335055,
+                    "quantity": 963,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        174776482552
+                    ],
+                    "values": [
+                        "F12"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 27331220085,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 27503507397,
+                    "quantity": 995,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 1000,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        942247167402
+                    ],
+                    "values": [
+                        "Flash Silver"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        1418058874187
+                    ],
+                    "values": [
+                        "Only one png photo"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765905,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546914,
+                    "quantity": 894,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300107
+                    ],
+                    "values": [
+                        "F1"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765907,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335059,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300137
+                    ],
+                    "values": [
+                        "F2"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195202,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546916,
+                    "quantity": 987,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300181
+                    ],
+                    "values": [
+                        "F3"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765909,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335061,
+                    "quantity": 984,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300237
+                    ],
+                    "values": [
+                        "F4"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195204,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546918,
+                    "quantity": 951,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        99620268284
+                    ],
+                    "values": [
+                        "F5"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195206,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546920,
+                    "quantity": 996,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679563
+                    ],
+                    "values": [
+                        "F6"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765911,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335063,
+                    "quantity": 989,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679633
+                    ],
+                    "values": [
+                        "F7"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195208,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335065,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679687
+                    ],
+                    "values": [
+                        "F8"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195210,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546922,
+                    "quantity": 975,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679787
+                    ],
+                    "values": [
+                        "F9"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765913,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335067,
+                    "quantity": 981,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680005
+                    ],
+                    "values": [
+                        "F10"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765915,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546924,
+                    "quantity": 994,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680249
+                    ],
+                    "values": [
+                        "F11"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765917,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335069,
+                    "quantity": 963,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        174776482552
+                    ],
+                    "values": [
+                        "F12"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 27704436078,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 27503507415,
+                    "quantity": 995,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 1000,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        59899541131
+                    ],
+                    "values": [
+                        "white"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        1418058874187
+                    ],
+                    "values": [
+                        "Only one png photo"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765919,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335073,
+                    "quantity": 894,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300107
+                    ],
+                    "values": [
+                        "F1"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765921,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335075,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300137
+                    ],
+                    "values": [
+                        "F2"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195214,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335077,
+                    "quantity": 987,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300181
+                    ],
+                    "values": [
+                        "F3"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195216,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546926,
+                    "quantity": 984,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300237
+                    ],
+                    "values": [
+                        "F4"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195218,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335079,
+                    "quantity": 951,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        99620268284
+                    ],
+                    "values": [
+                        "F5"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765923,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546928,
+                    "quantity": 996,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679563
+                    ],
+                    "values": [
+                        "F6"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195220,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546930,
+                    "quantity": 989,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679633
+                    ],
+                    "values": [
+                        "F7"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195222,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335081,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679687
+                    ],
+                    "values": [
+                        "F8"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765925,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335083,
+                    "quantity": 975,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679787
+                    ],
+                    "values": [
+                        "F9"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765927,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335085,
+                    "quantity": 981,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680005
+                    ],
+                    "values": [
+                        "F10"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765929,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335087,
+                    "quantity": 994,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680249
+                    ],
+                    "values": [
+                        "F11"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195224,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546932,
+                    "quantity": 963,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        174776482552
+                    ],
+                    "values": [
+                        "F12"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 27331220123,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 27503507425,
+                    "quantity": 995,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 1000,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051959
+                    ],
+                    "values": [
+                        "Black"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        1418058874187
+                    ],
+                    "values": [
+                        "Only one png photo"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195226,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546934,
+                    "quantity": 894,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300107
+                    ],
+                    "values": [
+                        "F1"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765933,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335091,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300137
+                    ],
+                    "values": [
+                        "F2"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195228,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546936,
+                    "quantity": 987,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300181
+                    ],
+                    "values": [
+                        "F3"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195230,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546938,
+                    "quantity": 984,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300237
+                    ],
+                    "values": [
+                        "F4"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195232,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546940,
+                    "quantity": 951,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        99620268284
+                    ],
+                    "values": [
+                        "F5"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195234,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335093,
+                    "quantity": 996,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679563
+                    ],
+                    "values": [
+                        "F6"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765935,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335095,
+                    "quantity": 989,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679633
+                    ],
+                    "values": [
+                        "F7"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195236,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546942,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679687
+                    ],
+                    "values": [
+                        "F8"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195238,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335097,
+                    "quantity": 975,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679787
+                    ],
+                    "values": [
+                        "F9"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195240,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546944,
+                    "quantity": 981,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680005
+                    ],
+                    "values": [
+                        "F10"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765937,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335099,
+                    "quantity": 994,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680249
+                    ],
+                    "values": [
+                        "F11"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765939,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546946,
+                    "quantity": 963,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        174776482552
+                    ],
+                    "values": [
+                        "F12"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 27331220131,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 27503507433,
+                    "quantity": 995,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 1000,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        56847051761
+                    ],
+                    "values": [
+                        "Pink"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        1418058874187
+                    ],
+                    "values": [
+                        "Only one png photo"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195244,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546948,
+                    "quantity": 894,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300107
+                    ],
+                    "values": [
+                        "F1"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195246,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335103,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300137
+                    ],
+                    "values": [
+                        "F2"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195248,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335105,
+                    "quantity": 987,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300181
+                    ],
+                    "values": [
+                        "F3"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195250,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335107,
+                    "quantity": 984,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        102643300237
+                    ],
+                    "values": [
+                        "F4"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195252,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546950,
+                    "quantity": 951,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        99620268284
+                    ],
+                    "values": [
+                        "F5"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195254,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335109,
+                    "quantity": 996,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679563
+                    ],
+                    "values": [
+                        "F6"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765941,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335111,
+                    "quantity": 989,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679633
+                    ],
+                    "values": [
+                        "F7"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195256,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546952,
+                    "quantity": 993,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679687
+                    ],
+                    "values": [
+                        "F8"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765943,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546954,
+                    "quantity": 975,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104679787
+                    ],
+                    "values": [
+                        "F9"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22607195258,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335113,
+                    "quantity": 981,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680005
+                    ],
+                    "values": [
+                        "F10"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765945,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22556546956,
+                    "quantity": 994,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        178104680249
+                    ],
+                    "values": [
+                        "F11"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 22179765947,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 22318335115,
+                    "quantity": 963,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 2402,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        174776482552
+                    ],
+                    "values": [
+                        "F12"
+                    ]
+                }
+            ]
+        },
+        {
+            "product_id": 27331220135,
+            "sku": "",
+            "is_deleted": false,
+            "offerings": [
+                {
+                    "offering_id": 27503507437,
+                    "quantity": 995,
+                    "is_enabled": true,
+                    "is_deleted": false,
+                    "price": {
+                        "amount": 1000,
+                        "divisor": 100,
+                        "currency_code": "CAD"
+                    },
+                    "readiness_state_id": 1402633865884
+                }
+            ],
+            "property_values": [
+                {
+                    "property_id": 513,
+                    "property_name": "Font Color",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        103025056078
+                    ],
+                    "values": [
+                        "Rose Gold"
+                    ]
+                },
+                {
+                    "property_id": 514,
+                    "property_name": "Font Option",
+                    "scale_id": null,
+                    "scale_name": null,
+                    "value_ids": [
+                        1418058874187
+                    ],
+                    "values": [
+                        "Only one png photo"
+                    ]
+                }
+            ]
+        }
+    ],
+    "price_on_property": [
+        514
+    ],
+    "quantity_on_property": [
+        514
+    ],
+    "sku_on_property": [],
+    "readiness_state_on_property": [],
+    "listing": {
+        "listing_id": 1783866666,
+        "user_id": 959509176,
+        "shop_id": 54047645,
+        "title": "Personalized Red Plush Christmas Stocking: Custom Name Decor",
+        "description": "Important notice: Orders placed after Dec 9 may not arrive by Christmas due to extended shipping times. Please place your orders early to ensure timely delivery.\n\nCustom name christmas stockings, unforgettable Christmas memories, Everyone can join and enjoy personalized xmas stockings.\n\nHang it by the fireplace mantel, staircase, or anywhere else that needs a dash of Christmas spirit. This stocking will undoubtedly become a cherished part of your family traditions, year after year.\n\nSpread the magic of Christmas with our Personalized Red Plush Christmas Stocking - a delightful keepsake that captures the essence of the season while celebrating your unique identity.\n\nEach member of the family will love having their very own Red Plush Stocking to hold all of their goodies from Santa.\n\n✨ Classic Look -- Our red plush stocking with a white cuff is the quintessential Christmas stocking design, a timeless classic\n✨ Great for Any Member of the Family -- When it comes to Christmas stockings, everyone is sure to love this traditional design\n✨ Great Quality -- This stocking is made from a super soft plush material that will be able to hold whatever stocking stuffers you throw in there. The plush will allow the stockings to last for years!\n\nMore Details:\nMade of plush cotton/polyester fabric with full cuff\nPlease note - size and color may vary slightly\n\n-Size:\nLength:16.5’’\nWidth:8.26’’\n\nHow to order\n1.Choose Font Option\n2.Choose Font Color\n3.Enter your name in Personalization Box\n-Name:\n4.For &quot;No-Name&quot;,Leave&quot;Blank&quot;please.",
+        "state": "active",
+        "creation_timestamp": 1764626681,
+        "created_timestamp": 1764626681,
+        "ending_timestamp": 1775077481,
+        "original_creation_timestamp": 1726902300,
+        "last_modified_timestamp": 1764626681,
+        "updated_timestamp": 1764626681,
+        "state_timestamp": 1764626313,
+        "quantity": 12695,
+        "shop_section_id": null,
+        "featured_rank": -1,
+        "url": "https://www.etsy.com/listing/1783866666/personalized-red-plush-christmas",
+        "num_favorers": 4098,
+        "non_taxable": false,
+        "is_taxable": true,
+        "is_customizable": false,
+        "is_personalizable": true,
+        "personalization_is_required": true,
+        "personalization_char_count_max": 256,
+        "personalization_instructions": "Please leave your name here. and font style\nExample: Lisa-F7",
+        "listing_type": "physical",
+        "tags": [
+            "Christmas Stocking",
+            "Xmas Stocking",
+            "Christmas Decor",
+            "Stocking with names",
+            "Family Stockings",
+            "Christmas Gifts",
+            "Holiday Stockings",
+            "Red Plush Stockings",
+            "Christmas gift",
+            "Christmas Ornament",
+            "Stocking With Name",
+            "Xmas Stockings",
+            "Name Stockings"
+        ],
+        "materials": [
+            "Velvet"
+        ],
+        "shipping_profile_id": 245287481044,
+        "return_policy_id": 1288936800545,
+        "processing_min": 8,
+        "processing_max": 10,
+        "who_made": "i_did",
+        "when_made": "made_to_order",
+        "is_supply": true,
+        "item_weight": null,
+        "item_weight_unit": null,
+        "item_length": null,
+        "item_width": null,
+        "item_height": null,
+        "item_dimensions_unit": null,
+        "is_private": false,
+        "style": [],
+        "file_data": "",
+        "has_variations": true,
+        "should_auto_renew": true,
+        "language": "en-US",
+        "price": {
+            "amount": 1000,
+            "divisor": 100,
+            "currency_code": "CAD"
+        },
+        "taxonomy_id": 1858,
+        "production_partners": [],
+        "skus": [],
+        "views": 0,
+        "readiness_state_id": null,
+        "suggested_title": null
+    }
+}

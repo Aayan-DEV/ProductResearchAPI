@@ -1982,6 +1982,8 @@ def save_combined_run_json(out_dir: Path, summary: Dict, outputs_dir: Path) -> P
         "popular_info": None,
         # NEW: structured sale info if produced by step 2
         "sale_info": None,
+        # NEW: variations_cleaned as separate top-level field (not in popular_info)
+        "variations_cleaned": None,
     }
 
     # Embed the full listing source object when available
@@ -2001,6 +2003,14 @@ def save_combined_run_json(out_dir: Path, summary: Dict, outputs_dir: Path) -> P
             combined["sale_info"] = json.loads(read_file_text(sale_path))
     except Exception:
         combined["sale_info"] = None
+
+    # NEW: attach variations_cleaned as separate top-level field (not in popular_info)
+    try:
+        var_path = out_dir / "variations_cleaned.json"
+        if var_path.exists():
+            combined["variations_cleaned"] = json.loads(read_file_text(var_path))
+    except Exception:
+        combined["variations_cleaned"] = None
 
     out_json = out_dir / "combined_demand_and_product.json"
     try:
@@ -2592,14 +2602,30 @@ def ensure_output_dirs(run_dir: Path, listing_id: int, group_num: int, group_typ
 def load_source_listing_info_map(popular_path: Path) -> Dict[int, dict]:
     """
     Build a map of listing_id -> full listing object from popular listings JSON.
-    Supports both:
+    Supports:
       - first_etsy_api_info: {'listings': [ {...}, ... ]}
       - legacy: {'popular_results': [ {...}, ... ]}
+      - single search: {'listing_id': int, 'popular_info': {...}} (single object structure)
     """
     info_map: Dict[int, dict] = {}
     try:
         if popular_path and popular_path.exists():
             data = json.loads(popular_path.read_text(encoding="utf-8"))
+            
+            # Handle single search structure: single object with listing_id and popular_info
+            if isinstance(data, dict) and "listing_id" in data and "popular_info" in data:
+                lid = data.get("listing_id")
+                if isinstance(lid, int):
+                    # Use popular_info as the main object, but merge with root-level fields
+                    info_obj = dict(data.get("popular_info") or {})
+                    # Preserve root-level fields that might not be in popular_info
+                    for key in ["listing_id", "title", "url", "variations_cleaned", "primary_image", "sale_info"]:
+                        if key in data and key not in info_obj:
+                            info_obj[key] = data[key]
+                    info_map[lid] = info_obj
+                    return info_map
+            
+            # Handle array structures (listings or popular_results)
             items = data.get("listings")
             if not isinstance(items, list):
                 items = data.get("popular_results")

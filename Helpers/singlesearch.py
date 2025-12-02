@@ -75,7 +75,7 @@ def run_replace_listing(listing_id: int, user_id: str, session_id: str, forced_p
     user_id_slug = slugify_safe(user_id)
     sess_id_slug = slugify_safe(session_id)
 
-    compiled = compile_single_listing(lid, forced_personalize, skip_ai_keywords=True)
+    compiled = compile_single_listing(lid, forced_personalize, skip_ai_keywords=False)
     compiled.setdefault("meta", {})["session_id"] = sess_id_slug
     compiled.setdefault("meta", {})["user_id"] = user_id_slug
 
@@ -270,12 +270,24 @@ def _to_megafile_entry(compiled: Dict[str, Any]) -> Dict[str, Any]:
     """
     listing_id = compiled.get("listing_id")
     title = compiled.get("title")
+    
+    # Normalize demand_value (can be in different places)
+    demand_value = compiled.get("demand_value")
+    if demand_value is None:
+        demand_value = compiled.get("demand")
+    if demand_value is None and compiled.get("signals"):
+        demand_value = compiled.get("signals", {}).get("demand_value")
+    
+    # Get source_paths from compiled, or initialize empty dict
+    compiled_source_paths = compiled.get("source_paths") or {}
+    
     entry = {
-        "listing_id": compiled.get("listing_id"),
-        "title": compiled.get("title"),
+        "listing_id": listing_id,
+        "title": title,
         "popular_info": compiled.get("popular_info"),
         "signals": compiled.get("signals"),
-        "demand": compiled.get("demand"),
+        "demand_value": demand_value,
+        "demand": demand_value,  # Keep both for compatibility
         "demand_extras": compiled.get("demand_extras"),
         "keywords": compiled.get("keywords") or [],
         "everbee": {"results": (compiled.get("everbee") or {}).get("results") or []},
@@ -283,15 +295,16 @@ def _to_megafile_entry(compiled: Dict[str, Any]) -> Dict[str, Any]:
         "variations_cleaned": compiled.get("variations_cleaned"),
         "sale_info": compiled.get("sale_info"),
         "shop": compiled.get("shop"),
+        "taxonomy_id": compiled.get("taxonomy_id"),
         "source_paths": {
-            "summary_source": None,
-            "ai_keywords_source": None,
-            "everbee_source": None,
-            "combined": None,
-            "primary_image": None,
-            "variations_cleaned": None,
-            "listing_sale_info": None,
-            "extras_from_listing": None,
+            "summary_source": compiled_source_paths.get("summary_source"),
+            "ai_keywords_source": compiled_source_paths.get("ai_keywords_source"),
+            "everbee_source": compiled_source_paths.get("everbee_source"),
+            "combined": compiled_source_paths.get("combined"),
+            "primary_image": compiled_source_paths.get("primary_image"),
+            "variations_cleaned": compiled_source_paths.get("variations_cleaned"),
+            "listing_sale_info": compiled_source_paths.get("listing_sale_info"),
+            "extras_from_listing": compiled_source_paths.get("extras_from_listing"),
         },
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
@@ -305,10 +318,21 @@ def _merge_entry_preserving_primary_image(prev_entry: Dict[str, Any], new_entry:
     propagate to the megafile (and therefore Railway) without dropping data.
     """
     merged = dict(prev_entry)
-    preserve_keys = {"primary_image", "source_paths", "listing_id"}
+    preserve_keys = {"primary_image", "listing_id"}
 
     def _has_value(value: Any) -> bool:
         return value is not None
+
+    # Merge source_paths: update with new paths while preserving existing ones
+    if "source_paths" in new_entry and isinstance(new_entry["source_paths"], dict):
+        prev_source_paths = merged.get("source_paths") or {}
+        new_source_paths = new_entry["source_paths"]
+        # Merge: new paths override old ones, but keep old ones if new doesn't have them
+        merged_source_paths = dict(prev_source_paths)
+        for k, v in new_source_paths.items():
+            if v is not None:
+                merged_source_paths[k] = v
+        merged["source_paths"] = merged_source_paths
 
     for key, value in new_entry.items():
         if key in preserve_keys:
@@ -341,6 +365,13 @@ def _merge_entry_preserving_primary_image(prev_entry: Dict[str, Any], new_entry:
                 merged["sale_info"] = value
             elif "sale_info" not in merged:
                 merged["sale_info"] = None
+            continue
+
+        if key == "variations_cleaned":
+            if value is not None:
+                merged["variations_cleaned"] = value
+            elif "variations_cleaned" not in merged:
+                merged["variations_cleaned"] = None
             continue
 
         if _has_value(value) or key not in merged:
@@ -389,6 +420,8 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
         "sale_info": None,
         "keywords": [],
         "everbee": {"results": []},
+        "taxonomy_id": None,
+        "source_paths": {},
         "meta": {
             "run_dir": str(run_dir),
             "outputs_dir": str(outputs_dir),
@@ -404,9 +437,44 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
         compiled.setdefault("errors", {})["open_api"] = str(e)
     listing_obj = listing_payloads[0] if listing_payloads else {}
     normalized = _normalize_listing_object(listing_obj)
-    compiled["popular_info"] = normalized.get("raw")
+    # Clean popular_info: remove variations_cleaned if present (it should be separate, not in raw data)
+    popular_info_raw = normalized.get("raw") or {}
+    if isinstance(popular_info_raw, dict):
+        # Remove variations_cleaned from popular_info to keep it separate
+        popular_info_clean = {k: v for k, v in popular_info_raw.items() if k != "variations_cleaned"}
+        compiled["popular_info"] = popular_info_clean
+        # Extract taxonomy_id from popular_info with error checking
+        taxonomy_id = popular_info_clean.get("taxonomy_id")
+        if taxonomy_id is not None:
+            try:
+                compiled["taxonomy_id"] = int(taxonomy_id)
+                print(f"[singlesearch] ✅ Extracted taxonomy_id: {compiled['taxonomy_id']} for listing_id: {listing_id}", flush=True)
+            except (ValueError, TypeError) as e:
+                compiled["taxonomy_id"] = taxonomy_id
+                print(f"[singlesearch] ⚠️ taxonomy_id conversion failed (keeping raw value): {taxonomy_id}, error: {e}", flush=True)
+        else:
+            print(f"[singlesearch] ⚠️ taxonomy_id not found in popular_info for listing_id: {listing_id}", flush=True)
+            compiled["taxonomy_id"] = None
+    else:
+        compiled["popular_info"] = popular_info_raw
+        print(f"[singlesearch] ⚠️ popular_info_raw is not a dict, cannot extract taxonomy_id for listing_id: {listing_id}", flush=True)
+        compiled["taxonomy_id"] = None
     compiled["title"] = normalized.get("title")
     compiled["url"] = normalized.get("url")
+    
+    # Write popular_listings_full_pdf.json early so process_listing_demand can read has_variations
+    # This must be written BEFORE process_listing_demand is called
+    try:
+        early_popular_path = outputs_dir / "popular_listings_full_pdf.json"
+        early_payload = {
+            "listing_id": int(listing_id),
+            "title": compiled.get("title"),
+            "url": compiled.get("url"),
+            "popular_info": compiled.get("popular_info") or {},
+        }
+        write_json_atomic(early_popular_path, early_payload)
+    except Exception as e:
+        compiled.setdefault("errors", {})["early_popular_write"] = str(e)
 
     # NEW: Pre-demand helpers via real listingCards cURL; fallback to synthetic if it fails
     primary_img: Optional[Dict[str, Any]] = None
@@ -500,6 +568,8 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
         if img_path.exists():
             try:
                 compiled["primary_image"] = json.loads(img_path.read_text(encoding="utf-8"))
+                # Save source path for primary_image
+                compiled.setdefault("source_paths", {})["primary_image"] = str(img_path)
             except Exception:
                 compiled["primary_image"] = None
 
@@ -507,6 +577,8 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
         if var_path.exists():
             try:
                 compiled["variations_cleaned"] = json.loads(var_path.read_text(encoding="utf-8"))
+                # Save source path for variations_cleaned
+                compiled.setdefault("source_paths", {})["variations_cleaned"] = str(var_path)
             except Exception:
                 compiled["variations_cleaned"] = None
 
@@ -514,6 +586,8 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
         if sale_path.exists():
             try:
                 compiled["sale_info"] = json.loads(sale_path.read_text(encoding="utf-8"))
+                # Save source path for sale_info
+                compiled.setdefault("source_paths", {})["listing_sale_info"] = str(sale_path)
             except Exception:
                 compiled["sale_info"] = None
 
@@ -521,6 +595,8 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
         if extras_path.exists():
             try:
                 compiled["demand_extras"] = json.loads(extras_path.read_text(encoding="utf-8"))
+                # Save source path for extras_from_listing
+                compiled.setdefault("source_paths", {})["extras_from_listing"] = str(extras_path)
             except Exception:
                 compiled["demand_extras"] = None
 
@@ -556,8 +632,15 @@ def compile_single_listing(listing_id: int, forced_personalize: Optional[bool] =
         pass
 
     # Save compiled JSON under run_dir outputs for traceability
+    # Ensure variations_cleaned is NOT in popular_info (keep it separate at top level)
+    compiled_for_save = dict(compiled)
+    if isinstance(compiled_for_save.get("popular_info"), dict):
+        # Remove variations_cleaned from popular_info if it somehow got in there
+        popular_info_clean = {k: v for k, v in compiled_for_save["popular_info"].items() if k != "variations_cleaned"}
+        compiled_for_save["popular_info"] = popular_info_clean
+    
     out_path = outputs_dir / "popular_listings_full_pdf.json"
-    write_json_atomic(out_path, compiled)
+    write_json_atomic(out_path, compiled_for_save)
 
     compiled.setdefault("meta", {})["compiled_path"] = str(out_path)
     return compiled

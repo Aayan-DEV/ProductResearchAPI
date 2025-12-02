@@ -538,6 +538,212 @@ def replace_keyword_in_url(base_url: str, keyword: str) -> str:
     new_query = urllib.parse.urlencode(q, doseq=True, quote_via=urllib.parse.quote)
     return urllib.parse.urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
+def _extract_vol_from_response(obj: Dict[str, Any]) -> Optional[int]:
+    """Extract volume from multiple possible locations in the response."""
+    # Check response object first (nested structure)
+    response = obj.get("response")
+    if isinstance(response, dict):
+        # Direct: response.vol
+        vol = response.get("vol")
+        if vol is not None:
+            try:
+                return int(float(vol))
+            except Exception:
+                pass
+        
+        # From metrics in response: response.metrics.vol, response.metrics.volume, response.metrics.searchVolume
+        metrics = response.get("metrics")
+        if isinstance(metrics, dict):
+            for key in ["vol", "volume", "searchVolume"]:
+                val = metrics.get(key)
+                if val is not None:
+                    try:
+                        return int(float(val))
+                    except Exception:
+                        continue
+        
+        # From stats in response: response.stats.searchVolume
+        stats = response.get("stats")
+        if isinstance(stats, dict):
+            val = stats.get("searchVolume")
+            if val is not None:
+                try:
+                    return int(float(val))
+                except Exception:
+                    pass
+        
+        # Direct in response: response.volume or response.searchVolume
+        for key in ["volume", "searchVolume"]:
+            val = response.get(key)
+            if val is not None:
+                try:
+                    return int(float(val))
+                except Exception:
+                    continue
+        
+        # From searched_keyword array in response: response.searched_keyword[0].vol
+        sk = response.get("searched_keyword")
+        if isinstance(sk, list) and sk:
+            row = sk[0] if isinstance(sk[0], dict) else {}
+            vol = row.get("vol") or row.get("volume") or row.get("searchVolume")
+            if vol is not None:
+                try:
+                    return int(float(vol))
+                except Exception:
+                    pass
+    
+    # Direct: found.vol
+    vol = obj.get("vol")
+    if vol is not None:
+        try:
+            return int(float(vol))
+        except Exception:
+            pass
+    
+    # From metrics object: found.metrics.vol, found.metrics.volume, found.metrics.searchVolume
+    metrics = obj.get("metrics")
+    if isinstance(metrics, dict):
+        for key in ["vol", "volume", "searchVolume"]:
+            val = metrics.get(key)
+            if val is not None:
+                try:
+                    return int(float(val))
+                except Exception:
+                    continue
+    
+    # From stats object: found.stats.searchVolume
+    stats = obj.get("stats")
+    if isinstance(stats, dict):
+        val = stats.get("searchVolume")
+        if val is not None:
+            try:
+                return int(float(val))
+            except Exception:
+                pass
+    
+    # Direct: found.volume or found.searchVolume
+    for key in ["volume", "searchVolume"]:
+        val = obj.get(key)
+        if val is not None:
+            try:
+                return int(float(val))
+            except Exception:
+                continue
+    
+    # From searched_keyword array (first item)
+    sk = obj.get("searched_keyword")
+    if isinstance(sk, list) and sk:
+        row = sk[0] if isinstance(sk[0], dict) else {}
+        vol = row.get("vol") or row.get("volume") or row.get("searchVolume")
+        if vol is not None:
+            try:
+                return int(float(vol))
+            except Exception:
+                pass
+    
+    return None
+
+def _extract_comp_from_response(obj: Dict[str, Any]) -> Optional[int]:
+    """Extract competition from multiple possible locations in the response."""
+    # Check response object first (nested structure)
+    response = obj.get("response")
+    if isinstance(response, dict):
+        # Direct: response.competition
+        comp = response.get("competition")
+        if comp is not None:
+            try:
+                return int(float(comp))
+            except Exception:
+                pass
+        
+        # From metrics in response: response.metrics.competition
+        metrics = response.get("metrics")
+        if isinstance(metrics, dict):
+            val = metrics.get("competition")
+            if val is not None:
+                try:
+                    return int(float(val))
+                except Exception:
+                    pass
+        
+        # From stats in response: response.stats.avgTotalListings
+        stats = response.get("stats")
+        if isinstance(stats, dict):
+            val = stats.get("avgTotalListings")
+            if val is not None:
+                try:
+                    return int(float(val))
+                except Exception:
+                    pass
+        
+        # Direct in response: response.avgTotalListings
+        val = response.get("avgTotalListings")
+        if val is not None:
+            try:
+                return int(float(val))
+            except Exception:
+                pass
+        
+        # From searched_keyword array in response: response.searched_keyword[0].competition
+        sk = response.get("searched_keyword")
+        if isinstance(sk, list) and sk:
+            row = sk[0] if isinstance(sk[0], dict) else {}
+            comp = row.get("competition") or row.get("avgTotalListings")
+            if comp is not None:
+                try:
+                    return int(float(comp))
+                except Exception:
+                    pass
+    
+    # Direct: found.competition
+    comp = obj.get("competition")
+    if comp is not None:
+        try:
+            return int(float(comp))
+        except Exception:
+            pass
+    
+    # From metrics object: found.metrics.competition
+    metrics = obj.get("metrics")
+    if isinstance(metrics, dict):
+        val = metrics.get("competition")
+        if val is not None:
+            try:
+                return int(float(val))
+            except Exception:
+                pass
+    
+    # From stats object: found.stats.avgTotalListings
+    stats = obj.get("stats")
+    if isinstance(stats, dict):
+        val = stats.get("avgTotalListings")
+        if val is not None:
+            try:
+                return int(float(val))
+            except Exception:
+                pass
+    
+    # Direct: found.avgTotalListings
+    val = obj.get("avgTotalListings")
+    if val is not None:
+        try:
+            return int(float(val))
+        except Exception:
+            pass
+    
+    # From searched_keyword array (first item)
+    sk = obj.get("searched_keyword")
+    if isinstance(sk, list) and sk:
+        row = sk[0] if isinstance(sk[0], dict) else {}
+        comp = row.get("competition") or row.get("avgTotalListings")
+        if comp is not None:
+            try:
+                return int(float(comp))
+            except Exception:
+                pass
+    
+    return None
+
 def fetch_metrics_for_keyword(keyword: str, base_url: Optional[str] = None, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     if not base_url or not headers:
         base_url, headers = ensure_everbee_config()
@@ -550,16 +756,14 @@ def fetch_metrics_for_keyword(keyword: str, base_url: Optional[str] = None, head
             obj = resp.json()
         except Exception:
             obj = {"_non_json_response": resp.text}
-        sk = obj.get("searched_keyword")
-        vol = None
-        comp = None
-        if isinstance(sk, list) and sk:
-            row = sk[0] if isinstance(sk[0], dict) else {}
-            vol = row.get("vol")
-            comp = row.get("competition")
+        
+        # Extract vol and comp from all possible locations
+        vol = _extract_vol_from_response(obj)
+        comp = _extract_comp_from_response(obj)
+        
         metrics = {
-            "vol": int(float(vol)) if vol is not None else None,
-            "competition": int(float(comp)) if comp is not None else None,
+            "vol": vol,
+            "competition": comp,
         }
         return {
             "keyword": keyword,
