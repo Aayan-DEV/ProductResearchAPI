@@ -4552,6 +4552,7 @@ def orchestrate_run(
     *,
     session_id: Optional[str] = None,
     entry_progress_cb: Optional[Callable[[Dict[str, Any]], None]] = None,
+    skip_db_save: bool = False,
 ) -> Dict:
     """
     Orchestrate the full pipeline with precise scoping:
@@ -4629,43 +4630,46 @@ def orchestrate_run(
     total_popular = len(popular_ids_dedup)
     target_listing_ids = popular_ids_dedup[:]
 
-    # NEW: ensure downstream stages run; fallback when no popular IDs
-    strict_pop = str(os.getenv("STRICT_POPULAR_ONLY", "0")).lower() in ("1", "true", "yes")
+    # STRICT: Only process popular listings. If none found, return empty result.
     if total_popular == 0:
-        if strict_pop:
-            print("[Run] Strict popular-only mode: no Popular-now IDs; skipping fallback.", flush=True)
-        else:
-            fallback_ids = result.get("html_listing_ids_all") or listing_ids
-            try:
-                fallback_ids = [int(str(x)) for x in (fallback_ids or [])]
-            except Exception:
-                fallback_ids = listing_ids
-            fallback_ids = list(dict.fromkeys(fallback_ids))
-            if desired_total is not None:
-                try:
-                    cap = max(1, int(desired_total))
-                except Exception:
-                    cap = 10
-                fallback_ids = fallback_ids[:cap]
-            else:
-                fallback_ids = fallback_ids[:min(10, len(fallback_ids))]
-            try:
-                etsy.append_to_popular_queue(popular_queue_path, fallback_ids, 0, user_id)
-            except Exception as e:
-                print(f"[Run] WARN: fallback queue append failed: {e}")
-            total_popular = len(fallback_ids)
-            target_listing_ids = fallback_ids[:]
-            try:
-                if progress_cb:
-                    progress_cb({
-                        "stage": "fallback",
-                        "user_id": user_id,
-                        "remaining": total_popular,
-                        "total": total_popular,
-                        "message": f"Fallback: queued {total_popular} listings from aggregated search",
-                    })
-            except Exception:
-                pass
+        print("[Run] No Popular-now IDs found. Returning empty result.", flush=True)
+        # Create empty megafile
+        empty_megafile_path = os.path.join(outputs_dir, f"megafile_listings_{slug}.json")
+        empty_doc = {"entries": []}
+        write_json_file(empty_megafile_path, empty_doc)
+        
+        # Create empty ranked file
+        empty_ranked_path = os.path.join(outputs_dir, f"megafile_listings_{slug}_ranked.json")
+        write_json_file(empty_ranked_path, empty_doc)
+        
+        # Write session log
+        session_paths = create_user_session_dirs(user_id, slug, desired_total, fetched_total)
+        run_log = {
+            "success": True,
+            "user_id": user_id,
+            "keyword": keyword,
+            "desired_total": desired_total,
+            "timing": {
+                "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(start_ts)),
+                "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time())),
+                "duration_seconds": round(time.time() - start_ts, 3),
+            },
+            "meta": {
+                "megafile_path": empty_megafile_path,
+                "run_root_dir": run_root_dir,
+                "keyword_slug": slug,
+            },
+        }
+        write_json_file(session_paths["run_log_path"], run_log)
+        
+        return {
+            "success": True,
+            "message": f"Fetched {fetched_total} listings, but 0 Popular-now listings found. Returning empty result.",
+            "meta": {
+                "megafile_path": empty_ranked_path,
+                "run_root_dir": run_root_dir,
+            },
+        }
 
     # Start AI/Everbee and demand/artifacts threads
     keywords_t = start_keywords_and_everbee_thread(
@@ -4684,7 +4688,7 @@ def orchestrate_run(
         popular_queue_path,
         run_root_dir,
         outputs_dir,
-        target_listing_ids or listing_ids,
+        target_listing_ids,  # STRICT: Only use popular listings, never fallback to all listings
         slug,
         user_id=user_id,
         keyword=keyword,
@@ -4795,7 +4799,7 @@ def orchestrate_run(
 
     # Save all entries to database in batch (only after ranking and enrichment)
     persist_info = {"saved": 0, "batch_id": None, "enabled": bool(_db_settings())}
-    if ranked_path:
+    if ranked_path and not skip_db_save:
         try:
             if progress_cb:
                 progress_cb({
@@ -4817,6 +4821,8 @@ def orchestrate_run(
             print(f"[Run] Saved {persist_info.get('saved', 0)} entries to database after ranking.", flush=True)
         except Exception as persist_err:
             print(f"[Run] Failed to persist entries: {persist_err}", flush=True)
+    elif skip_db_save:
+        print(f"[Run] Skipping database save (skip_db_save=True)", flush=True)
 
     # Emit completion event with megafile path
     try:
@@ -5518,6 +5524,194 @@ def run_script(payload: RunScriptRequest) -> Dict:
             pass
         return {"success": False, "error": str(e)}
 
+def create_ai_ranked_file(ranked_path: str) -> str:
+    """
+    Create a minimal AI-ranked file from the full ranked file.
+    Filters entries to match the example.json structure.
+    
+    Returns the path to the created AI-ranked file.
+    """
+    from pathlib import Path
+    
+    ranked_p = Path(ranked_path)
+    if not ranked_p.exists():
+        raise FileNotFoundError(f"Ranked file not found: {ranked_path}")
+    
+    # Create AI-ranked filename
+    ai_ranked_path = ranked_p.parent / ranked_p.name.replace("_ranked.json", "_ai_ranked.json")
+    
+    print(f"[AI-ranked] Creating minimal AI-ranked file from {ranked_path}...", flush=True)
+    
+    # Load the ranked file
+    with open(ranked_path, "r", encoding="utf-8") as f:
+        ranked_doc = json.load(f)
+    
+    entries = ranked_doc.get("entries") or []
+    ai_entries = []
+    
+    # Fields to keep in popular_info (from example.json)
+    popular_info_fields = {
+        "description", "state", "original_creation_timestamp",
+        "num_favorers", "personalization_is_required",
+        "tags", "materials", "has_variations",
+        "production_partners", "views", "demand",
+        "variations_cleaned"
+    }
+    
+    # Fields to keep in shop.details (from example.json)
+    shop_details_fields = {
+        "shop_name", "created_timestamp", "title", "announcement",
+        "currency_code", "is_vacation", "listing_active_count",
+        "digital_listing_count", "num_favorers", "languages",
+        "transaction_sold_count", "review_average", "review_count"
+    }
+    
+    for entry in entries:
+        listing_id = entry.get("listing_id")
+        if not listing_id:
+            continue
+        
+        # Build minimal entry
+        ai_entry = {
+            "listing_id": listing_id,
+            "title": entry.get("title"),
+        }
+        
+        # Filter popular_info
+        popular_info = entry.get("popular_info") or {}
+        ai_popular_info = {}
+        for field in popular_info_fields:
+            if field in popular_info:
+                ai_popular_info[field] = popular_info[field]
+        ai_entry["popular_info"] = ai_popular_info
+        
+        # Filter shop data
+        shop_data = entry.get("shop") or {}
+        
+        # Build minimal shop object
+        shop_details = shop_data.get("details") or {}
+        ai_shop_details = {}
+        for field in shop_details_fields:
+            if field in shop_details:
+                ai_shop_details[field] = shop_details[field]
+        
+        ai_entry["shop"] = {
+            "details": ai_shop_details,
+            "errors": shop_data.get("errors", {})
+        }
+        
+        # Add keywords only (everbee removed for AI-ranked files)
+        ai_entry["keywords"] = entry.get("keywords") or []
+        
+        ai_entries.append(ai_entry)
+    
+    # Create AI-ranked document
+    ai_doc = {
+        "entries": ai_entries
+    }
+    
+    # Write AI-ranked file
+    write_json_file(str(ai_ranked_path), ai_doc)
+    print(f"[AI-ranked] Created AI-ranked file with {len(ai_entries)} entries: {ai_ranked_path}", flush=True)
+    
+    return str(ai_ranked_path)
+
+@app.post("/run/ai")
+def run_ai(payload: RunRequest) -> Dict:
+    """
+    AI endpoint for bulk research with minimal output.
+    Does the same bulk research as /run, but creates a separate AI-ranked file
+    with minimal information matching the example.json structure.
+    Reviews are filtered to only include those matching the listing_id.
+    """
+    try:
+        if not payload.user_id.strip():
+            return {"status": "error", "error": "user_id is required"}
+        if not payload.keyword.strip():
+            return {"status": "error", "error": "keyword is required"}
+
+        # Serialize full workflow execution inside a single process
+        sem = globals().get("_RUN_SEMAPHORE")
+        if sem is None:
+            import threading, os
+            sem = threading.Semaphore(int(os.getenv("RUN_CONCURRENCY", "10")))
+            globals()["_RUN_SEMAPHORE"] = sem
+
+        with sem:
+            result = orchestrate_run(
+                payload.user_id.strip(),
+                payload.keyword.strip(),
+                payload.desired_total,
+                session_id=payload.session_id.strip(),
+                skip_db_save=True,  # Skip database saving for AI commands - quick response only
+            )
+
+        # On 100% success, create AI-ranked file
+        if isinstance(result, dict) and result.get("success") is True:
+            try:
+                import ranking as rnk
+                megafile_path = (result.get("meta") or {}).get("megafile_path")
+                if not megafile_path:
+                    return {"success": False, "error": "megafile_path missing from result"}
+                
+                # Ensure we have a ranked file
+                ranked_path = None
+                if megafile_path.endswith("_ranked.json"):
+                    ranked_path = megafile_path
+                else:
+                    print("[run/ai] Ranking megafile before creating AI-ranked file...", flush=True)
+                    ranked_path = rnk.rank_megafile(str(megafile_path))
+                    print(f"[run/ai] Ranked megafile created: {ranked_path}", flush=True)
+                
+                # Create AI-ranked file
+                ai_ranked_path = create_ai_ranked_file(ranked_path)
+                
+                # Get the folder path (directory containing the AI-ranked file)
+                from pathlib import Path
+                ai_ranked_folder = str(Path(ai_ranked_path).parent)
+                
+                # Skip database persistence for /ai commands - just save the AI JSON and return
+                
+                # Simple response for AI agent: just "done" and file path
+                return {
+                    "status": "done",
+                    "file_path": ai_ranked_path,
+                    "folder_path": ai_ranked_folder
+                }
+            except Exception as e:
+                print(f"[run/ai] Failed to create AI-ranked file: {e}", flush=True)
+                return {"status": "error", "error": f"Failed to create AI-ranked file: {str(e)}"}
+
+        # If not a full success, return error
+        error_msg = result.get("error") if isinstance(result, dict) else str(result)
+        return {"status": "error", "error": error_msg or "Unknown error occurred"}
+
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response is not None else None
+        text = e.response.text if e.response is not None else ""
+        return {"status": "error", "error": f"HTTP error from Etsy API: {status} {text}"}
+    except Exception as e:
+        # Attempt to log failure to a per-user run file if possible
+        try:
+            user_id = getattr(payload, "user_id", "")
+            keyword = getattr(payload, "keyword", "")
+            slug = slugify_safe(keyword) if keyword else "unknown"
+            session_paths = create_user_session_dirs(user_id or "unknown", slug, payload.desired_total, None)
+            fail_log = {
+                "success": False,
+                "error": str(e),
+                "user_id": user_id,
+                "keyword": keyword,
+                "desired_total": payload.desired_total,
+                "timing": {
+                    "failed_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time())),
+                },
+            }
+            write_json_file(session_paths["run_log_path"], fail_log)
+        except Exception:
+            pass
+        return {"status": "error", "error": str(e)}
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8001")))
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", "8002")))

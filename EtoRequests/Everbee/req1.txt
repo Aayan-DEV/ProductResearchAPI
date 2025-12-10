@@ -1,4 +1,4 @@
-curl 'https://api.everbee.com/keyword_research/keyword_suggestion?type_of_search=keywords_suggestion&keyword=guess%20who%20template&order_by=new_volume&order_direction=desc&page=1&count_search=true&fromApp=webapp' \
+curl 'https://api.everbee.com/keyword_research/keyword_suggestion?type_of_search=keywords_suggestion&keyword=pdf&order_by=new_volume&order_direction=desc&page=1&count_search=true&fromApp=webapp' \
   -X 'POST' \
   -H 'accept: application/json' \
   -H 'accept-language: en-US,en;q=0.9' \
@@ -13,4 +13,4 @@ curl 'https://api.everbee.com/keyword_research/keyword_suggestion?type_of_search
   -H 'sec-fetch-mode: cors' \
   -H 'sec-fetch-site: cross-site' \
   -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' \
-  -H 'x-access-token: eyJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJldmVyYmVlLXNzbyIsImlhdCI6MTc2NDA3Mzg4NCwiZXhwIjoxNzY0Njc4Njg0LCJqdGkiOiJjMWY5ZDFjYjg3NWYiLCJ1c2VyX2lkIjoiZGEzMTkwNmYtYjFiYS00OTBlLThjZmMtNzU1NTE5YjliYjRjIiwiZW1haWwiOiJhYXlhbmFzaWYxMjM0QGdtYWlsLmNvbSIsInR2IjoyLCJpYnAiOmZhbHNlLCJpYnMiOnRydWUsImltYWdlIjoiaHR0cHM6Ly9pLmV0c3lzdGF0aWMuY29tL2l1c2EvYmE5Y2RlLzEwMzY3NTQyMC9pdXNhXzc1eDc1LjEwMzY3NTQyMF84MWd3LmpwZz92ZXJzaW9uPTAiLCJzb3MiOnRydWUsImFjdCI6IjEiLCJhdWQiOiIzNy1VUDR4UjRtWlphWnRlczI3aTZpSllCelIwWHkwX0MxMGZlLXd0LVNFIiwic2NvcGVzIjpbXX0.RFDGYWIq-ejl68iz8vON7ugAwuSrEK1H19MWgG4dDOTD5mw3V2sNkEI2KTMWIhifK4A_otxu4nEaUdK_LRjLig'
+  -H 'x-access-token: eyJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJldmVyYmVlLXNzbyIsImlhdCI6MTc2NDkxNzg5MCwiZXhwIjoxNzY1NTIyNjkwLCJqdGkiOiJiYzZiYjU4NGMyNzMiLCJ1c2VyX2lkIjoiZGEzMTkwNmYtYjFiYS00OTBlLThjZmMtNzU1NTE5YjliYjRjIiwiZW1haWwiOiJhYXlhbmFzaWYxMjM0QGdtYWlsLmNvbSIsInR2IjoyLCJpYnAiOmZhbHNlLCJpYnMiOnRydWUsImltYWdlIjoiaHR0cHM6Ly9pLmV0c3lzdGF0aWMuY29tL2l1c2EvYmE5Y2RlLzEwMzY3NTQyMC9pdXNhXzc1eDc1LjEwMzY3NTQyMF84MWd3LmpwZz92ZXJzaW9uPTAiLCJzb3MiOnRydWUsImFjdCI6IjEiLCJhdWQiOiIzNy1VUDR4UjRtWlphWnRlczI3aTZpSllCelIwWHkwX0MxMGZlLXd0LVNFIiwic2NvcGVzIjpbXX0.Vel4ELqFEdoYZSKJseAwvM6WiX94yg52Qlvd-1FU9-Udd2UVHsQFrzWy61igfaAkjMdbNWV-_EM6F01Xvy97mg'
