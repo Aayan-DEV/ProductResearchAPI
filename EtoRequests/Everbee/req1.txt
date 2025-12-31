@@ -6,11 +6,11 @@ curl 'https://api.everbee.com/keyword_research/keyword_suggestion?type_of_search
   -H 'origin: https://app.everbee.io' \
   -H 'priority: u=1, i' \
   -H 'referer: https://app.everbee.io/' \
-  -H 'sec-ch-ua: "Chromium";v="142", "Google Chrome";v="142", "Not_A Brand";v="99"' \
+  -H 'sec-ch-ua: "Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"' \
   -H 'sec-ch-ua-mobile: ?0' \
   -H 'sec-ch-ua-platform: "macOS"' \
   -H 'sec-fetch-dest: empty' \
   -H 'sec-fetch-mode: cors' \
   -H 'sec-fetch-site: cross-site' \
-  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36' \
-  -H 'x-access-token: eyJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJldmVyYmVlLXNzbyIsImlhdCI6MTc2NDkxNzg5MCwiZXhwIjoxNzY1NTIyNjkwLCJqdGkiOiJiYzZiYjU4NGMyNzMiLCJ1c2VyX2lkIjoiZGEzMTkwNmYtYjFiYS00OTBlLThjZmMtNzU1NTE5YjliYjRjIiwiZW1haWwiOiJhYXlhbmFzaWYxMjM0QGdtYWlsLmNvbSIsInR2IjoyLCJpYnAiOmZhbHNlLCJpYnMiOnRydWUsImltYWdlIjoiaHR0cHM6Ly9pLmV0c3lzdGF0aWMuY29tL2l1c2EvYmE5Y2RlLzEwMzY3NTQyMC9pdXNhXzc1eDc1LjEwMzY3NTQyMF84MWd3LmpwZz92ZXJzaW9uPTAiLCJzb3MiOnRydWUsImFjdCI6IjEiLCJhdWQiOiIzNy1VUDR4UjRtWlphWnRlczI3aTZpSllCelIwWHkwX0MxMGZlLXd0LVNFIiwic2NvcGVzIjpbXX0.Vel4ELqFEdoYZSKJseAwvM6WiX94yg52Qlvd-1FU9-Udd2UVHsQFrzWy61igfaAkjMdbNWV-_EM6F01Xvy97mg'
+  -H 'user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36' \
+  -H 'x-access-token: eyJhbGciOiJIUzUxMiJ9.eyJpc3MiOiJldmVyYmVlLXNzbyIsImlhdCI6MTc2NjY2OTY0NiwiZXhwIjoxNzY3Mjc0NDQ2LCJqdGkiOiJiYTE2MDJhNzM2N2YiLCJ1c2VyX2lkIjoiZGEzMTkwNmYtYjFiYS00OTBlLThjZmMtNzU1NTE5YjliYjRjIiwiZW1haWwiOiJhYXlhbmFzaWYxMjM0QGdtYWlsLmNvbSIsInR2IjoyLCJpYnAiOmZhbHNlLCJpYnMiOnRydWUsImltYWdlIjoiaHR0cHM6Ly9pLmV0c3lzdGF0aWMuY29tL2l1c2EvYmE5Y2RlLzEwMzY3NTQyMC9pdXNhXzc1eDc1LjEwMzY3NTQyMF84MWd3LmpwZz92ZXJzaW9uPTAiLCJzb3MiOnRydWUsImFjdCI6IjEiLCJhdWQiOiIzNy1VUDR4UjRtWlphWnRlczI3aTZpSllCelIwWHkwX0MxMGZlLXd0LVNFIiwic2NvcGVzIjpbXX0.YUEWXuOy7AlCngCs0SlHT_7sJeFTuIhbvdx3SQWsoQA1gSFt7Pq8NPrcJyfQ9fH49U6LFNLLmEmsGsGtVuKvUg'

@@ -2988,6 +2988,376 @@ def main():
     print("Completed all assigned listings.")
     print("=" * 80)
 
+# ===== Incognito Mode (Memory-Only) =====
+
+def extract_demand_incog(
+    listing_id: int,
+    is_personalizable: bool = False,
+    cookie_jar_path: Optional[Path] = None,
+) -> Dict:
+    """
+    Memory-only demand extraction - no file writes.
+
+    Returns: {
+        "listing_id": int,
+        "demand_value": Optional[int],
+        "scarcity_title": Optional[str],
+        "sale_info": Dict,
+        "cart_id": Optional[int],
+        "inventory_id": Optional[int],
+        "success": bool,
+        "error": Optional[str],
+    }
+    """
+    import tempfile
+
+    result: Dict = {
+        "listing_id": int(listing_id),
+        "demand_value": None,
+        "scarcity_title": None,
+        "sale_info": {},
+        "cart_id": None,
+        "inventory_id": None,
+        "customization_id": None,
+        "success": False,
+        "error": None,
+    }
+
+    # Use provided cookie jar or create ephemeral one
+    if cookie_jar_path is None:
+        temp_jar = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+        jar_path = Path(temp_jar.name)
+        temp_jar.close()
+        cleanup_jar = True
+    else:
+        jar_path = cookie_jar_path
+        cleanup_jar = False
+
+    try:
+        # Clear cookie jar to start fresh
+        rm_file_if_exists(jar_path)
+
+        # Resolve cURL template paths
+        try:
+            seq = resolve_cart_sequence_paths(is_personalizable)
+            gettingcart_path = seq["gettingcart"]
+            listing_path = seq["listing"]
+            removingcart_path = seq["removingcart"]
+        except Exception as e:
+            result["error"] = f"Cart sequence files not found: {e}"
+            return result
+
+        # Step 1: Add to cart
+        add_result = _run_add_to_cart_incog(gettingcart_path, int(listing_id), jar_path)
+        if add_result is None:
+            result["error"] = "Add-to-cart failed or values not parsed"
+            return result
+
+        cart_id, inventory_id, customization_id = add_result
+        result["cart_id"] = cart_id
+        result["inventory_id"] = inventory_id
+        result["customization_id"] = customization_id
+
+        # Step 2: Fetch listing and extract demand
+        listing_result = _run_listing_request_incog(listing_path, int(listing_id), jar_path)
+        if listing_result:
+            result["scarcity_title"] = listing_result.get("scarcity_title")
+            result["demand_value"] = listing_result.get("demand_value")
+            result["sale_info"] = listing_result.get("sale_info", {})
+            # Update inventory_id if found in listing response (non-personalizable)
+            if not is_personalizable and listing_result.get("inventory_id"):
+                result["inventory_id"] = listing_result["inventory_id"]
+
+        # Step 3: Skip variations entirely for incognito mode
+
+        # Step 4: Remove from cart (no verification)
+        _run_remove_from_cart_incog(
+            removingcart_path,
+            int(listing_id),
+            cart_id,
+            result["inventory_id"],
+            jar_path,
+            customization_id=customization_id,
+            is_personalizable=is_personalizable,
+        )
+
+        result["success"] = True
+
+    except Exception as e:
+        result["error"] = str(e)
+    finally:
+        # Clean up ephemeral cookie jar
+        if cleanup_jar:
+            rm_file_if_exists(jar_path)
+
+    return result
+
+
+def _run_add_to_cart_incog(
+    gettingcart_path: Path,
+    listing_id: int,
+    jar_path: Path,
+) -> Optional[Tuple[int, Optional[int], Optional[int]]]:
+    """
+    Memory-only add-to-cart execution.
+    Returns: (cart_id, inventory_id, customization_id) or None on failure.
+    """
+    try:
+        original = read_file_text(gettingcart_path)
+    except Exception:
+        return None
+
+    try:
+        cmd = modify_gettingcart_command(original, listing_id)
+    except Exception:
+        return None
+
+    # Inject cookie jar (write only for first request)
+    cmd_jar = inject_cookie_jar(cmd, jar_path, read=False, write=True)
+
+    rc, stdout, stderr = run_shell_command(cmd_jar, timeout=60)
+
+    if rc != 0:
+        return None
+
+    cart_id = extract_cart_id_from_add_to_cart(stdout)
+    inventory_id = extract_inventory_id_from_add_to_cart(stdout)
+    customization_id = extract_new_customization_id_from_add_to_cart(stdout)
+
+    if cart_id is None:
+        return None
+
+    return (cart_id, inventory_id, customization_id)
+
+
+def _run_listing_request_incog(
+    listing_path: Path,
+    listing_id: int,
+    jar_path: Path,
+) -> Optional[Dict]:
+    """
+    Memory-only listing request execution.
+    Returns: {scarcity_title, demand_value, sale_info, inventory_id} or None on failure.
+    """
+    try:
+        original = read_file_text(listing_path)
+    except Exception:
+        return None
+
+    try:
+        cmd = modify_listing_command(original, listing_id)
+    except Exception:
+        return None
+
+    # Inject cookie jar (read existing session)
+    cmd_jar = inject_cookie_jar(cmd, jar_path, read=True, write=True)
+
+    rc, stdout, stderr = run_shell_command(cmd_jar, timeout=60)
+
+    if rc != 0 or not stdout.strip():
+        return None
+
+    # Parse JSON
+    listing_obj = None
+    try:
+        listing_obj = json.loads(stdout)
+    except json.JSONDecodeError:
+        m = re.search(r"\{.*\}", stdout, flags=re.DOTALL)
+        if m:
+            try:
+                listing_obj = json.loads(m.group(0))
+            except Exception:
+                listing_obj = None
+
+    if listing_obj is None:
+        return None
+
+    # Extract scarcity title and demand
+    scarcity_title = extract_scarcity_signal_title_from_json(listing_obj) or ""
+    demand_value = parse_demand_from_scarcity_title(scarcity_title)
+
+    # Extract sale info
+    sale_info = _extract_sale_info_from_listing_obj(listing_obj, listing_id)
+
+    # Extract inventory_id for non-personalizable items
+    inventory_id = _extract_inventory_id_from_listing_obj(listing_obj, listing_id)
+
+    return {
+        "scarcity_title": scarcity_title if scarcity_title else None,
+        "demand_value": demand_value,
+        "sale_info": sale_info,
+        "inventory_id": inventory_id,
+    }
+
+
+def _extract_sale_info_from_listing_obj(obj: dict, listing_id: int) -> Dict:
+    """
+    Extract sale/promotion info from listing JSON response.
+    """
+    sale_keys = [
+        "subtotal_after_discount",
+        "active_promotion",
+        "original_price",
+        "sale_price_presentation_discount_enabled",
+        "free_shipping",
+        "estimated_delivery_date",
+    ]
+
+    # Find the listing object matching our listing_id
+    cand = None
+
+    if isinstance(obj, dict):
+        # Search in various containers
+        arr = obj.get("listings")
+        if not arr:
+            for ck in ("data", "payload", "event_payload", "response"):
+                cont = obj.get(ck)
+                if isinstance(cont, dict):
+                    arr = (cont.get("listings") or cont.get("cart_listings")
+                           or cont.get("line_items") or cont.get("items"))
+                    if arr:
+                        break
+
+        if isinstance(arr, list):
+            for it in arr:
+                if isinstance(it, dict):
+                    lid = it.get("listing_id") or it.get("listingId") or it.get("listing")
+                    try:
+                        if int(lid) == int(listing_id):
+                            cand = it
+                            break
+                    except Exception:
+                        pass
+
+        if not cand:
+            cand = obj
+
+    sale_info = {}
+    if isinstance(cand, dict):
+        for k in sale_keys:
+            if k in cand:
+                sale_info[k] = cand.get(k)
+
+        # Also extract nudge data (total_carts, quantity)
+        nudge = cand.get("nudge")
+        if isinstance(nudge, dict):
+            if "total_carts" in nudge:
+                sale_info["total_carts"] = nudge.get("total_carts")
+            if "quantity" in nudge:
+                sale_info["quantity"] = nudge.get("quantity")
+
+    return sale_info
+
+
+def _extract_inventory_id_from_listing_obj(obj: dict, listing_id: int) -> Optional[int]:
+    """
+    Extract inventory_id from listing JSON response for non-personalizable items.
+    """
+    def coerce_int(v) -> Optional[int]:
+        try:
+            if isinstance(v, int):
+                return v
+            if isinstance(v, str):
+                s = v.strip()
+                return int(s) if s.isdigit() else None
+        except Exception:
+            pass
+        return None
+
+    def find_in_container(container: dict) -> Optional[int]:
+        if not isinstance(container, dict):
+            return None
+        for key in ("listings", "cart_listings", "line_items", "items"):
+            arr = container.get(key)
+            if isinstance(arr, list):
+                for it in arr:
+                    if not isinstance(it, dict):
+                        continue
+                    lid = it.get("listing_id") or it.get("listingId") or it.get("listing")
+                    try:
+                        lid_i = int(str(lid)) if lid is not None else None
+                    except Exception:
+                        lid_i = None
+                    if lid_i == int(listing_id):
+                        iid = coerce_int(
+                            it.get("listing_inventory_id")
+                            or it.get("inventory_id")
+                            or it.get("inventoryId")
+                        )
+                        if isinstance(iid, int) and iid > 0:
+                            return iid
+        return None
+
+    if not isinstance(obj, dict):
+        return None
+
+    # Check root
+    iid = find_in_container(obj)
+    if isinstance(iid, int) and iid > 0:
+        return iid
+
+    # Check nested containers
+    for ckey in ("data", "payload", "event_payload", "response"):
+        cont = obj.get(ckey)
+        iid = find_in_container(cont)
+        if isinstance(iid, int) and iid > 0:
+            return iid
+
+    return None
+
+
+def _run_remove_from_cart_incog(
+    removingcart_path: Path,
+    listing_id: int,
+    cart_id: int,
+    inventory_id: Optional[int],
+    jar_path: Path,
+    customization_id: Optional[int] = None,
+    is_personalizable: bool = False,
+) -> bool:
+    """
+    Memory-only cart removal execution.
+    Returns: True on success (or if removal command executed), False on read/modify error.
+    """
+    try:
+        original = read_file_text(removingcart_path)
+    except Exception:
+        return False
+
+    inv_val: Optional[int]
+    cust_val: Optional[int]
+
+    if is_personalizable:
+        inv_val = None
+        cust_val = None
+    else:
+        inv_val = inventory_id if isinstance(inventory_id, int) and inventory_id > 0 else 0
+        if inv_val > 0:
+            cust_val = 0
+        else:
+            cust_val = customization_id if isinstance(customization_id, int) and customization_id > 0 else 0
+
+    try:
+        cmd = modify_removingcart_command(
+            original_cmd=original,
+            cart_id=cart_id,
+            listing_id=listing_id,
+            inventory_id=inv_val,
+            customization_id=cust_val,
+            personalizable=is_personalizable,
+        )
+    except Exception:
+        return False
+
+    # Inject cookie jar
+    cmd_jar = inject_cookie_jar(cmd, jar_path, read=True, write=True)
+
+    # Execute (we don't care about result for incognito mode)
+    run_shell_command(cmd_jar, timeout=60)
+
+    return True
+
+
 # ===== Single mode =====
 
 def single_mode():

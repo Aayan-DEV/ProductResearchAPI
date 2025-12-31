@@ -5293,6 +5293,290 @@ def run_stream_get(user_id: str, keyword: str, session_id: str, desired_total: O
     payload = RunRequest(user_id=user_id, keyword=keyword, desired_total=desired_total, session_id=session_id)
     return run_stream(payload)
 
+
+# ===== Incognito Bulk Search Endpoint =====
+
+class IncogRunRequest(BaseModel):
+    keyword: str = Field(..., min_length=1)
+    desired_total: Optional[int] = None
+    concurrency: int = Field(default=2, ge=1, le=10)
+
+
+def _process_single_listing_incog(
+    listing_id: int,
+    title: str,
+    is_personalizable: bool = False,
+) -> Dict[str, Any]:
+    """
+    Process a single listing for incognito mode: demand extraction + AI keywords + Everbee.
+    Returns compact JSON with only essential data.
+    """
+    import second_demand_extractor as dem
+
+    result: Dict[str, Any] = {
+        "type": "listing",
+        "listing_id": listing_id,
+        "title": title,
+        "keywords": [],
+        "demand_value": None,
+        "scarcity_title": None,
+        "sale_info": {},
+        "everbee_metrics": {},
+        "errors": [],
+    }
+
+    # Step 1: Demand extraction (memory-only)
+    try:
+        demand_data = dem.extract_demand_incog(listing_id, is_personalizable=is_personalizable)
+        result["demand_value"] = demand_data.get("demand_value")
+        result["scarcity_title"] = demand_data.get("scarcity_title")
+        result["sale_info"] = demand_data.get("sale_info", {})
+        if not demand_data.get("success") and demand_data.get("error"):
+            result["errors"].append(f"demand: {demand_data.get('error')}")
+    except Exception as e:
+        result["errors"].append(f"demand: {str(e)}")
+
+    # Step 2: AI keywords generation
+    try:
+        if title and title.strip():
+            keywords = ai.generate_keywords_for_title_api(title.strip())
+            result["keywords"] = keywords if isinstance(keywords, list) else []
+    except Exception as e:
+        result["errors"].append(f"keywords: {str(e)}")
+
+    # Step 3: Everbee metrics for each keyword
+    for kw in result["keywords"]:
+        try:
+            metrics_resp = everbee.fetch_metrics_for_keyword(kw)
+            if metrics_resp and isinstance(metrics_resp, dict):
+                result["everbee_metrics"][kw] = metrics_resp.get("metrics", {})
+        except Exception as e:
+            result["everbee_metrics"][kw] = {"error": str(e)}
+
+    return result
+
+
+def _orchestrate_incog_run(
+    keyword: str,
+    desired_total: Optional[int],
+    concurrency: int,
+    result_queue,
+):
+    """
+    Orchestrate incognito bulk search - memory-only, no file saves.
+    Processes listings concurrently and puts results onto the queue.
+    """
+    import queue as q
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    try:
+        # Step 1: Aggregated search
+        result_queue.put({
+            "type": "progress",
+            "stage": "search",
+            "message": f"Searching for '{keyword}'...",
+        })
+
+        search_json = etsy.fetch_listings_aggregated(keyword, desired_total)
+        results = search_json.get("results") or []
+        fetched_total = len(results)
+
+        result_queue.put({
+            "type": "progress",
+            "stage": "search_complete",
+            "message": f"Found {fetched_total} listings",
+            "total_listings": fetched_total,
+        })
+
+        if fetched_total == 0:
+            result_queue.put({
+                "type": "complete",
+                "total_processed": 0,
+                "success": True,
+                "message": "No listings found for keyword",
+            })
+            return
+
+        # Step 2: Extract listing IDs and build title map
+        listing_ids = etsy.extract_listing_ids(search_json)
+
+        # Build listing_id -> title map from search results
+        title_map: Dict[int, str] = {}
+        has_variations_map: Dict[int, bool] = {}
+        for item in results:
+            if isinstance(item, dict):
+                lid = item.get("listing_id")
+                if lid:
+                    try:
+                        lid_int = int(lid)
+                        title_map[lid_int] = item.get("title", "")
+                        # Check if personalizable/has_variations
+                        has_var = item.get("has_variations", False)
+                        is_pers = item.get("is_personalizable", False)
+                        has_variations_map[lid_int] = bool(has_var or is_pers)
+                    except (ValueError, TypeError):
+                        pass
+
+        # Step 3: Run listingCards curl to detect "Popular now" (memory-only detection)
+        result_queue.put({
+            "type": "progress",
+            "stage": "popular_detection",
+            "message": "Detecting Popular now listings...",
+        })
+
+        # Use a simplified in-memory popular detection
+        # We call the existing function but don't save files - just get popular IDs
+        import tempfile
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_helpers = os.path.join(temp_dir, "helpers")
+            temp_outputs = os.path.join(temp_dir, "outputs")
+            os.makedirs(temp_helpers, exist_ok=True)
+            os.makedirs(temp_outputs, exist_ok=True)
+
+            slug = slugify_safe(keyword)
+
+            try:
+                pop_result = etsy.run_listingcards_curl_for_ids(
+                    slug,
+                    listing_ids,
+                    temp_helpers,
+                    temp_outputs,
+                    queue_path=None,
+                    queue_user_id=None,
+                    popular_listings_path=None,
+                    search_json=search_json,
+                    progress_path=None,
+                    progress_cb=None,
+                )
+                popular_ids = list(dict.fromkeys(pop_result.get("popular_now_ids") or []))
+            except Exception as e:
+                # Fallback: use all listing IDs if popular detection fails
+                popular_ids = listing_ids[:desired_total] if desired_total else listing_ids
+
+        total_popular = len(popular_ids)
+
+        if total_popular == 0:
+            result_queue.put({
+                "type": "complete",
+                "total_processed": 0,
+                "success": True,
+                "message": "No Popular now listings detected",
+            })
+            return
+
+        result_queue.put({
+            "type": "progress",
+            "stage": "processing",
+            "message": f"Processing {total_popular} Popular now listings with concurrency={concurrency}",
+            "total_popular": total_popular,
+        })
+
+        # Step 4: Process listings concurrently
+        processed_count = 0
+        with ThreadPoolExecutor(max_workers=concurrency) as executor:
+            futures = {}
+            for lid in popular_ids:
+                title = title_map.get(lid, "")
+                is_pers = has_variations_map.get(lid, False)
+                future = executor.submit(
+                    _process_single_listing_incog,
+                    lid,
+                    title,
+                    is_pers,
+                )
+                futures[future] = lid
+
+            for future in as_completed(futures):
+                lid = futures[future]
+                try:
+                    listing_result = future.result()
+                    result_queue.put(listing_result)
+                    processed_count += 1
+                except Exception as e:
+                    result_queue.put({
+                        "type": "listing",
+                        "listing_id": lid,
+                        "title": title_map.get(lid, ""),
+                        "keywords": [],
+                        "demand_value": None,
+                        "scarcity_title": None,
+                        "sale_info": {},
+                        "everbee_metrics": {},
+                        "errors": [f"processing: {str(e)}"],
+                    })
+                    processed_count += 1
+
+        result_queue.put({
+            "type": "complete",
+            "total_processed": processed_count,
+            "success": True,
+        })
+
+    except Exception as e:
+        result_queue.put({
+            "type": "error",
+            "error": str(e),
+        })
+
+
+@app.post("/run/stream/incog")
+def run_stream_incog(payload: IncogRunRequest):
+    """
+    Incognito bulk search with streaming results.
+    - No file saves, no database writes
+    - No session tracking (fully stateless)
+    - Streams compact JSON per listing
+    - Memory-only processing
+    """
+    import threading
+    import queue
+    import json
+    import time
+
+    keyword = payload.keyword.strip()
+    if not keyword:
+        return {"success": False, "error": "keyword is required"}
+
+    desired_total = payload.desired_total
+    concurrency = payload.concurrency
+
+    def sse_iter():
+        result_q = queue.Queue()
+
+        # Emit start event
+        yield f"data: {json.dumps({'type': 'start', 'keyword': keyword, 'concurrency': concurrency})}\n\n"
+
+        # Start worker thread
+        worker = threading.Thread(
+            target=_orchestrate_incog_run,
+            args=(keyword, desired_total, concurrency, result_q),
+            daemon=True,
+        )
+        worker.start()
+
+        last_keepalive = time.time()
+
+        while True:
+            try:
+                result = result_q.get(timeout=0.5)
+                yield f"data: {json.dumps(result)}\n\n"
+
+                if result.get("type") in ("complete", "error"):
+                    break
+            except queue.Empty:
+                # Send keepalive every 5 seconds
+                now = time.time()
+                if now - last_keepalive >= 5.0:
+                    last_keepalive = now
+                    yield f": keepalive {int(now)}\n\n"
+
+    return StreamingResponse(
+        sse_iter(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
 @app.get("/health")
 def health() -> Dict:
     return {"success": True, "status": "ok"}
